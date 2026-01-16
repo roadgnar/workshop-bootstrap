@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#
+# bootstrap - Linux bootstrap script
+# Installs Docker Engine, Cursor IDE, and launches a containerized demo web app
+#
+# Usage: ./bootstrap [OPTIONS]
+#   --reinstall-docker   Force reinstall Docker
+#   --reinstall-cursor   Force reinstall Cursor
+#   --port PORT          Demo port (default: 8080)
+#   --no-open            Skip opening Cursor
+#   --timeout SECONDS    Docker startup timeout (default: 120)
+#   --help               Show help
+
+set -euo pipefail
+
+# Set OS for common script
+export OS="linux"
+
+# Script directory (go up one level to repo root)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export SCRIPT_DIR
+
+# Source and run common bootstrap
+source "${SCRIPT_DIR}/scripts/bootstrap-common.sh"
+run_bootstrap "$@"
+

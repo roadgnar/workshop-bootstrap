@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#
+# dev - macOS development helper
+# Container management commands: up, down, shell, logs, etc.
+#
+# Usage: ./dev <command>
+
+set -euo pipefail
+
+# Set OS for common script
+export OS="macos"
+
+# Script directory (go up one level to repo root)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export SCRIPT_DIR
+
+# Source and run common dev helper
+source "${SCRIPT_DIR}/scripts/dev-common.sh"
+run_dev_command "$@"
+

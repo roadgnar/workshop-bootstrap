@@ -1,0 +1,65 @@
+# Workshop Bootstrap - Docker Compose Configuration
+# Supports both development (bind mount) and production modes
+
+services:
+  # Development service - bind mounts repo for live editing
+  dev:
+    build:
+      context: .
+      target: development
+      args:
+        BUILD_TIME: ${BUILD_TIME:-development}
+        VERSION: ${VERSION:-1.0.0}
+    container_name: workshop-dev
+    volumes:
+      - .:/workspace:cached
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      - FLASK_ENV=development
+      - PORT=8080
+      - VERSION=${VERSION:-1.0.0}
+    working_dir: /workspace
+    # Keep alive for development; demo runs separately
+    command: sleep infinity
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Demo service - runs the web application
+  demo:
+    build:
+      context: .
+      target: development
+      args:
+        BUILD_TIME: ${BUILD_TIME:-development}
+        VERSION: ${VERSION:-1.0.0}
+    container_name: workshop-demo
+    volumes:
+      - .:/workspace:cached
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      - FLASK_ENV=development
+      - PORT=8080
+      - VERSION=${VERSION:-1.0.0}
+    working_dir: /workspace/demo-site
+    command: python app.py
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    profiles:
+      - demo
+
+# Named volumes for persistent data (if needed in future)
+volumes:
+  workspace-cache:
+

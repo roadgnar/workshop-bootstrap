@@ -1,0 +1,71 @@
+name: Lint Scripts
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  shellcheck:
+    name: 🔍 ShellCheck (Bash)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: '.'
+          severity: warning
+        env:
+          SHELLCHECK_OPTS: -e SC1091  # Ignore "not following sourced file"
+
+  psscriptanalyzer:
+    name: 🔍 PSScriptAnalyzer (PowerShell)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+          
+          $results = @()
+          $psFiles = Get-ChildItem -Path . -Filter "*.ps1" -Recurse
+          
+          foreach ($file in $psFiles) {
+            Write-Host "Analyzing: $($file.FullName)"
+            $analysis = Invoke-ScriptAnalyzer -Path $file.FullName -Severity Warning,Error
+            if ($analysis) {
+              $results += $analysis
+            }
+          }
+          
+          if ($results.Count -gt 0) {
+            Write-Host "`n❌ Found $($results.Count) issues:`n"
+            $results | Format-Table -Property ScriptName, Line, Severity, RuleName, Message -AutoSize
+            exit 1
+          } else {
+            Write-Host "`n✅ No issues found!"
+          }
+
+  dockerfile:
+    name: 🐳 Dockerfile Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: warning
+

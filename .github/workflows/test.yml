@@ -1,0 +1,315 @@
+name: Test Bootstrap
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  # ============================================
+  # Linux Testing
+  # ============================================
+  test-linux:
+    name: 🐧 Linux (Ubuntu)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: |
+          chmod +x linux/bootstrap linux/dev
+          chmod +x scripts/*.sh
+
+      - name: Verify Docker is available
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Test bootstrap (skip installs, Docker pre-installed)
+        run: |
+          cd linux
+          
+          # Source the common script to test detection logic
+          export OS="linux"
+          export SCRIPT_DIR="$(cd .. && pwd)"
+          source ../scripts/utils.sh
+          
+          echo "==> Testing detection functions..."
+          
+          if docker_installed; then
+            echo "✓ Docker detected"
+          else
+            echo "✗ Docker not detected"
+            exit 1
+          fi
+          
+          if docker_running; then
+            echo "✓ Docker daemon running"
+          else
+            echo "✗ Docker daemon not running"
+            exit 1
+          fi
+          
+          if compose_available; then
+            echo "✓ Docker Compose available"
+          else
+            echo "✗ Docker Compose not available"
+            exit 1
+          fi
+
+      - name: Build container
+        run: |
+          docker compose build dev
+
+      - name: Start container
+        run: |
+          docker compose up -d dev
+          sleep 5
+          docker compose ps
+
+      - name: Start demo service
+        run: |
+          docker compose exec -d dev bash -c "cd /workspace/demo-site && python app.py"
+          sleep 5
+
+      - name: Test demo endpoints
+        run: |
+          echo "==> Testing health endpoint..."
+          curl -sf http://localhost:8080/health | jq .
+          
+          echo "==> Testing main page..."
+          curl -sf http://localhost:8080 | head -20
+          
+          echo "==> Testing API info..."
+          curl -sf http://localhost:8080/api/info | jq .
+
+      - name: Test dev helper commands
+        run: |
+          cd linux
+          ./dev status
+          ./dev logs &
+          sleep 2
+          kill %1 || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose down --volumes --remove-orphans || true
+
+  # ============================================
+  # macOS Testing
+  # ============================================
+  test-macos:
+    name: 🍎 macOS
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: |
+          chmod +x mac/bootstrap mac/dev
+          chmod +x scripts/*.sh
+
+      - name: Install Docker (via Colima for CI)
+        run: |
+          brew install docker docker-compose colima
+          colima start --cpu 2 --memory 4
+          
+          # Wait for Docker to be ready
+          for i in {1..30}; do
+            if docker info &>/dev/null; then
+              echo "Docker is ready"
+              break
+            fi
+            echo "Waiting for Docker..."
+            sleep 2
+          done
+
+      - name: Verify Docker is available
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Test bootstrap detection logic
+        run: |
+          cd mac
+          
+          export OS="macos"
+          export SCRIPT_DIR="$(cd .. && pwd)"
+          source ../scripts/utils.sh
+          
+          echo "==> Testing detection functions..."
+          
+          if docker_installed; then
+            echo "✓ Docker detected"
+          else
+            echo "✗ Docker not detected"
+            exit 1
+          fi
+          
+          if docker_running; then
+            echo "✓ Docker daemon running"
+          else
+            echo "✗ Docker daemon not running"
+            exit 1
+          fi
+
+      - name: Build container
+        run: |
+          docker compose build dev
+
+      - name: Start container
+        run: |
+          docker compose up -d dev
+          sleep 5
+          docker compose ps
+
+      - name: Start demo service
+        run: |
+          docker compose exec -d dev bash -c "cd /workspace/demo-site && python app.py"
+          sleep 5
+
+      - name: Test demo endpoints
+        run: |
+          echo "==> Testing health endpoint..."
+          curl -sf http://localhost:8080/health
+          
+          echo "==> Testing main page..."
+          curl -sf http://localhost:8080 | head -20
+          
+          echo "==> Testing API info..."
+          curl -sf http://localhost:8080/api/info
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose down --volumes --remove-orphans || true
+          colima stop || true
+
+  # ============================================
+  # Windows Testing
+  # ============================================
+  test-windows:
+    name: 🪟 Windows
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test PowerShell utilities
+        shell: pwsh
+        run: |
+          . .\scripts\utils.ps1
+          
+          Write-Banner
+          Write-Step "Testing utility functions..."
+          Write-Info "Info message test"
+          Write-Success "Success message test"
+          Write-Warn "Warning message test"
+
+      - name: Verify Docker is available
+        shell: pwsh
+        run: |
+          . .\scripts\utils.ps1
+          
+          if (Test-DockerInstalled) {
+            Write-Success "Docker is installed"
+            docker --version
+          } else {
+            Write-Error "Docker not installed"
+            exit 1
+          }
+          
+          if (Test-DockerRunning) {
+            Write-Success "Docker daemon is running"
+          } else {
+            Write-Error "Docker daemon not running"
+            exit 1
+          }
+          
+          if (Test-ComposeAvailable) {
+            Write-Success "Docker Compose is available"
+            docker compose version
+          } else {
+            Write-Error "Docker Compose not available"
+            exit 1
+          }
+
+      - name: Build container
+        shell: pwsh
+        run: |
+          docker compose build dev
+
+      - name: Start container
+        shell: pwsh
+        run: |
+          docker compose up -d dev
+          Start-Sleep -Seconds 5
+          docker compose ps
+
+      - name: Start demo service
+        shell: pwsh
+        run: |
+          docker compose exec -d dev bash -c "cd /workspace/demo-site && python app.py"
+          Start-Sleep -Seconds 5
+
+      - name: Test demo endpoints
+        shell: pwsh
+        run: |
+          Write-Host "==> Testing health endpoint..."
+          $health = Invoke-RestMethod -Uri "http://localhost:8080/health"
+          $health | ConvertTo-Json
+          
+          Write-Host "==> Testing API info..."
+          $info = Invoke-RestMethod -Uri "http://localhost:8080/api/info"
+          $info | ConvertTo-Json
+          
+          Write-Host "==> Testing main page..."
+          $page = Invoke-WebRequest -Uri "http://localhost:8080" -UseBasicParsing
+          Write-Host "Status: $($page.StatusCode)"
+
+      - name: Test dev helper commands
+        shell: pwsh
+        run: |
+          cd windows
+          .\dev.ps1 status
+
+      - name: Cleanup
+        if: always()
+        shell: pwsh
+        run: |
+          docker compose down --volumes --remove-orphans
+
+  # ============================================
+  # Summary Job
+  # ============================================
+  test-summary:
+    name: ✅ All Tests Passed
+    needs: [test-linux, test-macos, test-windows]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Check results
+        run: |
+          if [ "${{ needs.test-linux.result }}" != "success" ]; then
+            echo "❌ Linux tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.test-macos.result }}" != "success" ]; then
+            echo "❌ macOS tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.test-windows.result }}" != "success" ]; then
+            echo "❌ Windows tests failed"
+            exit 1
+          fi
+          echo "✅ All platform tests passed!"
+
