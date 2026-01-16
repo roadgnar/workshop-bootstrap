@@ -153,7 +153,7 @@ switch ($Command) {
     "help" { Show-Usage }
     default {
         if ([string]::IsNullOrEmpty($Command)) {
-            Write-Error "No command specified"
+            Write-ErrorMsg "No command specified"
             Write-Host ""
             Show-Usage
             exit 1

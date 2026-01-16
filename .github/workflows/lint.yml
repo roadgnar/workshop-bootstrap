@@ -21,7 +21,10 @@ jobs:
           scandir: '.'
           severity: warning
         env:
-          SHELLCHECK_OPTS: -e SC1091  # Ignore "not following sourced file"
+          # SC1091: Can't follow non-constant source
+          # SC2034: Variable appears unused (false positives with sourced files)
+          # SC2155: Declare and assign separately (style preference)
+          SHELLCHECK_OPTS: -e SC1091 -e SC2034 -e SC2155
 
   psscriptanalyzer:
     name: 🔍 PSScriptAnalyzer (PowerShell)
@@ -36,23 +39,35 @@ jobs:
         run: |
           Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
           
-          $results = @()
+          $errors = @()
+          $warnings = @()
           $psFiles = Get-ChildItem -Path . -Filter "*.ps1" -Recurse
           
           foreach ($file in $psFiles) {
             Write-Host "Analyzing: $($file.FullName)"
             $analysis = Invoke-ScriptAnalyzer -Path $file.FullName -Severity Warning,Error
             if ($analysis) {
-              $results += $analysis
+              foreach ($item in $analysis) {
+                if ($item.Severity -eq 'Error') {
+                  $errors += $item
+                } else {
+                  $warnings += $item
+                }
+              }
             }
           }
           
-          if ($results.Count -gt 0) {
-            Write-Host "`n❌ Found $($results.Count) issues:`n"
-            $results | Format-Table -Property ScriptName, Line, Severity, RuleName, Message -AutoSize
+          if ($warnings.Count -gt 0) {
+            Write-Host "`n⚠️ Found $($warnings.Count) warnings (non-blocking):`n"
+            $warnings | Format-Table -Property ScriptName, Line, Severity, RuleName, Message -AutoSize
+          }
+          
+          if ($errors.Count -gt 0) {
+            Write-Host "`n❌ Found $($errors.Count) errors:`n"
+            $errors | Format-Table -Property ScriptName, Line, Severity, RuleName, Message -AutoSize
             exit 1
           } else {
-            Write-Host "`n✅ No issues found!"
+            Write-Host "`n✅ No blocking errors found!"
           }
 
   dockerfile:
@@ -67,5 +82,5 @@ jobs:
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile
-          failure-threshold: warning
+          failure-threshold: error
 

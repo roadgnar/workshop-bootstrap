@@ -346,7 +346,7 @@ GitHub Actions workflows test on:
 * 🍎 macOS: `macos-latest` — Scripts + Docker CLI + Cursor installation (daemon can't run)
 * 🪟 Windows: `windows-latest` — Scripts + Docker CLI + Cursor installation (Linux containers unavailable)
 
-> **Note:** GitHub Actions runners don't support nested virtualization on macOS/Windows, so the Docker daemon cannot run containers. However, we still test the Docker CLI and Cursor **installation** on these platforms to verify our install scripts work.
+> **Note:** GitHub Actions runners don't support nested virtualization on macOS/Windows, so the Docker daemon cannot run containers. CI calls the **actual install functions** from the scripts for Cursor installation.
 
 ## 7.2 Automated Tests (`.github/workflows/test.yml`)
 
@@ -354,10 +354,12 @@ GitHub Actions workflows test on:
 |------|-------|-------|---------|
 | Utility functions | ✅ | ✅ | ✅ |
 | Detection functions | ✅ | ✅ | ✅ |
-| Script syntax | ✅ | ✅ | ✅ |
-| **Docker CLI install** | (pre-installed) | ✅ Homebrew | ✅ WinGet |
-| **Cursor install** | — | ✅ Homebrew | ✅ WinGet |
-| Docker daemon running | ✅ | ❌ (no virt) | ❌ (no Linux) |
+| Script syntax validation | ✅ | ✅ | ✅ |
+| **Cursor install (actual script)** | — | ✅ `install_cursor_macos()` | ✅ `Install-CursorWindows` |
+| Cursor detection after install | — | ✅ | ✅ |
+| Docker CLI available | ✅ | ✅ Homebrew | ✅ pre-installed |
+| Docker detection functions | ✅ | ✅ | ✅ |
+| Docker daemon running | ✅ | ❌ (no virt) | ❌ (Windows containers) |
 | Build container | ✅ | — | — |
 | Start container | ✅ | — | — |
 | Bind mount verification | ✅ | — | — |
@@ -365,6 +367,14 @@ GitHub Actions workflows test on:
 | Main page from host | ✅ | — | — |
 | API info from host | ✅ | — | — |
 | Dev helper commands | ✅ | ✅ | ✅ |
+
+### What CI Cannot Test
+
+| Component | Reason |
+|-----------|--------|
+| Docker Desktop install | CI runners don't support nested virtualization |
+| Docker daemon on macOS/Windows | Same limitation |
+| Full end-to-end bootstrap | Would require Docker Desktop to start
 
 ## 7.3 Linting (`.github/workflows/lint.yml`)
 

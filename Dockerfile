@@ -1,7 +1,7 @@
 # Workshop Bootstrap - Development Container
 # Multi-stage build for efficient caching
 
-FROM python:3.12-slim as base
+FROM python:3.12-slim AS base
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -9,7 +9,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # Install system dependencies
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
@@ -19,9 +22,10 @@ WORKDIR /workspace
 
 # -------------------------------------------
 # Development stage
-FROM base as development
+FROM base AS development
 
 # Install development tools
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     vim \
     less \
@@ -30,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy and install Python dependencies
 COPY demo-site/requirements.txt /workspace/demo-site/requirements.txt
+# hadolint ignore=DL3042
 RUN pip install -r /workspace/demo-site/requirements.txt
 
 # Set build-time variables
@@ -44,10 +49,11 @@ CMD ["sleep", "infinity"]
 
 # -------------------------------------------
 # Production stage (for running the demo)
-FROM base as production
+FROM base AS production
 
 # Copy and install only production dependencies
 COPY demo-site/requirements.txt /workspace/demo-site/requirements.txt
+# hadolint ignore=DL3042
 RUN pip install -r /workspace/demo-site/requirements.txt
 
 # Copy application code

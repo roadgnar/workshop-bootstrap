@@ -26,7 +26,7 @@ function Write-Warn {
     Write-Host $Message
 }
 
-function Write-Error {
+function Write-ErrorMsg {
     param([string]$Message)
     Write-Host "    X " -ForegroundColor Red -NoNewline
     Write-Host $Message

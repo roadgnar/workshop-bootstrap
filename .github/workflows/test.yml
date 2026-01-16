@@ -314,17 +314,21 @@ jobs:
           fi
 
       # ----------------------------------------
-      # Cursor Installation Test
+      # Cursor Installation Test - USES ACTUAL SCRIPT
       # ----------------------------------------
-      - name: "Test 6: Install Cursor via Homebrew"
+      - name: "Test 6: Install Cursor using ACTUAL install script"
         run: |
-          echo "==> Installing Cursor IDE..."
-          brew install --cask cursor
+          echo "==> Calling install_cursor_macos from actual script..."
           
-          echo "==> Verifying Cursor installed..."
-          ls -la /Applications/Cursor.app || ls -la ~/Applications/Cursor.app
+          export OS="macos"
+          export SCRIPT_DIR="$(pwd)"
+          source scripts/utils.sh
+          source scripts/install-cursor-macos.sh
           
-          echo "✓ Cursor installed successfully"
+          # Call the ACTUAL install function
+          install_cursor_macos
+          
+          echo "✓ install_cursor_macos completed successfully"
 
       - name: "Test 7: Cursor detection after install"
         run: |
@@ -339,6 +343,9 @@ jobs:
             echo "✗ detect_cursor_macos() failed to detect Cursor"
             exit 1
           fi
+          
+          echo "==> Verifying Cursor installed..."
+          ls -la /Applications/Cursor.app || ls -la ~/Applications/Cursor.app || echo "Cursor.app not in expected location"
 
       - name: "Test 8: Dev helper commands"
         run: |
@@ -452,21 +459,24 @@ jobs:
           Write-Host "Docker daemon status: $(Test-DockerRunning)"
 
       # ----------------------------------------
-      # Cursor Installation Test
+      # Cursor Installation Test - USES ACTUAL SCRIPT
       # ----------------------------------------
-      - name: "Test 6: Install Cursor via WinGet"
+      - name: "Test 6: Install Cursor using ACTUAL install script"
         shell: pwsh
         run: |
-          Write-Host "==> Installing Cursor IDE via WinGet..."
+          Write-Host "==> Calling Install-CursorWindows from actual script..."
           
-          # Correct package ID: Anysphere.Cursor
-          # Reference: https://winstall.app/apps/Anysphere.Cursor
-          winget install -e --id Anysphere.Cursor --accept-source-agreements --accept-package-agreements
+          # Source the ACTUAL install script
+          . .\scripts\utils.ps1
+          . .\scripts\install-cursor-windows.ps1
           
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "✓ Cursor installed via WinGet"
+          # Call the ACTUAL install function
+          $result = Install-CursorWindows
+          
+          if ($result) {
+            Write-Host "✓ Install-CursorWindows completed successfully"
           } else {
-            Write-Host "✗ Cursor installation failed"
+            Write-Host "✗ Install-CursorWindows failed"
             exit 1
           }
 

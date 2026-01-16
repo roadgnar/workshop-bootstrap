@@ -108,6 +108,7 @@ cursor_installed() {
 }
 
 # Wait for a condition with timeout
+# shellcheck disable=SC2091
 wait_for() {
     local condition="$1"
     local timeout="${2:-60}"

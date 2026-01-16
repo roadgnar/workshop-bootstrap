@@ -63,7 +63,7 @@ function Start-DockerWindows {
     }
     
     if (-not $dockerDesktop) {
-        Write-Error "Docker Desktop executable not found"
+        Write-ErrorMsg "Docker Desktop executable not found"
         return $false
     }
     
@@ -90,7 +90,7 @@ function Start-DockerWindows {
     }
     
     Write-Host ""
-    Write-Error "Docker daemon did not start within $TimeoutSec seconds"
+    Write-ErrorMsg "Docker daemon did not start within $TimeoutSec seconds"
     Write-Info ""
     Write-Info "Docker Desktop may require first-run setup:"
     Write-Info "  1. Open Docker Desktop from Start Menu"

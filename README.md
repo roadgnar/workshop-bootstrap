@@ -4,7 +4,7 @@ A cross-platform "clone-and-run" developer environment that automatically sets u
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Clone → cd into your OS folder → Run bootstrap → Done!    │
+│  Clone → cd into your OS folder → Run bootstrap → Done!     │
 └─────────────────────────────────────────────────────────────┘
 ```
 

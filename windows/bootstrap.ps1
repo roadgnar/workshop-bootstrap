@@ -95,7 +95,7 @@ function Setup-Docker {
         Write-Info $composeVersion
     }
     else {
-        Write-Error "Docker Compose not available"
+        Write-ErrorMsg "Docker Compose not available"
         Write-Info "Please ensure Docker Desktop is properly installed"
         exit 1
     }
@@ -113,7 +113,7 @@ function Ensure-DockerRunning {
     $started = Start-DockerWindows -TimeoutSec $TimeoutSec
     
     if (-not $started) {
-        Write-Error "Failed to start Docker daemon"
+        Write-ErrorMsg "Failed to start Docker daemon"
         Write-Info ""
         Write-Info "Please start Docker Desktop manually and re-run this script"
         exit 1
@@ -153,14 +153,14 @@ function Setup-Containers {
     Write-Info "Building development container..."
     docker compose build dev
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to build container"
+        Write-ErrorMsg "Failed to build container"
         exit 1
     }
     
     Write-Info "Starting development container..."
     docker compose up -d dev
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to start container"
+        Write-ErrorMsg "Failed to start container"
         exit 1
     }
     
