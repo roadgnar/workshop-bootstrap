@@ -81,8 +81,9 @@ docker_running() {
 }
 
 # Check if Docker Compose is available
+# Checks both plugin style (docker compose) and standalone (docker-compose)
 compose_available() {
-    docker compose version &>/dev/null 2>&1
+    docker compose version &>/dev/null 2>&1 || docker-compose --version &>/dev/null 2>&1
 }
 
 # Check if Cursor is installed (basic check)

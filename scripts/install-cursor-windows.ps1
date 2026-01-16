@@ -36,7 +36,7 @@ function Install-CursorWindows {
         Write-Info "Using WinGet to install Cursor"
         
         try {
-            winget install -e --id Cursor.Cursor --accept-source-agreements --accept-package-agreements
+            winget install -e --id Anysphere.Cursor --accept-source-agreements --accept-package-agreements
             Write-Success "Cursor installed via WinGet"
             return $true
         }

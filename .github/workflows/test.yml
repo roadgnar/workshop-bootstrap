@@ -108,14 +108,20 @@ jobs:
           docker compose exec -d dev bash -c "cd /workspace/demo-site && python app.py"
           
           echo "==> Waiting for service to be ready..."
-          sleep 5
           
-          # Verify process is running
-          docker compose exec dev pgrep -f "python app.py" || {
-            echo "✗ Demo service not running"
-            exit 1
-          }
-          echo "✓ Demo service started"
+          # Wait for the service to respond (more reliable than checking process)
+          for i in {1..15}; do
+            if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+              echo "✓ Demo service started and responding"
+              exit 0
+            fi
+            echo "Waiting... ($i/15)"
+            sleep 2
+          done
+          
+          echo "✗ Demo service not responding after 30 seconds"
+          docker compose logs dev
+          exit 1
 
       # ----------------------------------------
       # Test 7: Health endpoint from HOST
@@ -274,9 +280,12 @@ jobs:
           
           echo "==> Verifying Docker CLI installed..."
           docker --version
-          docker compose version
           
-          echo "✓ Docker CLI installed successfully"
+          echo "==> Verifying docker-compose installed..."
+          # Homebrew installs standalone docker-compose (with hyphen)
+          docker-compose --version
+          
+          echo "✓ Docker CLI and docker-compose installed successfully"
           echo "Note: Daemon cannot run (no nested virtualization)"
 
       - name: "Test 5: Docker detection after install"
@@ -289,6 +298,13 @@ jobs:
             echo "✓ docker_installed() correctly detects Docker CLI"
           else
             echo "✗ docker_installed() failed to detect Docker"
+            exit 1
+          fi
+          
+          if compose_available; then
+            echo "✓ compose_available() correctly detects docker-compose"
+          else
+            echo "✗ compose_available() failed to detect docker-compose"
             exit 1
           fi
           
@@ -402,102 +418,83 @@ jobs:
           }
 
       # ----------------------------------------
-      # Docker CLI Installation Test
+      # Docker Tests (pre-installed on Windows runner)
       # ----------------------------------------
-      - name: "Test 4: Install Docker CLI via WinGet"
+      - name: "Test 4: Verify Docker (pre-installed)"
         shell: pwsh
         run: |
-          Write-Host "==> Installing Docker CLI..."
-          
-          # Try WinGet first
-          try {
-            winget install -e --id Docker.DockerCLI --accept-source-agreements --accept-package-agreements
-            Write-Host "✓ Docker CLI installed via WinGet"
-          }
-          catch {
-            Write-Host "WinGet failed, trying direct download..."
-            # Fallback to direct download
-            $url = "https://download.docker.com/win/static/stable/x86_64/docker-24.0.7.zip"
-            $zip = "$env:TEMP\docker.zip"
-            Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
-            Expand-Archive -Path $zip -DestinationPath "$env:ProgramFiles" -Force
-            $env:PATH = "$env:ProgramFiles\docker;$env:PATH"
-            Write-Host "✓ Docker CLI installed via direct download"
-          }
-
-      - name: "Test 5: Verify Docker CLI"
-        shell: pwsh
-        run: |
-          # Refresh PATH to find newly installed docker
-          $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
-          
-          Write-Host "==> Verifying Docker CLI..."
+          Write-Host "==> Checking Docker (pre-installed on runner)..."
           docker --version
-          Write-Host "✓ Docker CLI works"
-          Write-Host "Note: Daemon cannot run Linux containers on this runner"
+          docker compose version
+          Write-Host "✓ Docker CLI is available"
+          Write-Host "Note: Daemon runs Windows containers, not compatible with our Linux Dockerfile"
 
-      - name: "Test 6: Docker detection after install"
+      - name: "Test 5: Docker detection functions"
         shell: pwsh
         run: |
           . .\scripts\utils.ps1
           
           if (Test-DockerInstalled) {
-            Write-Host "✓ Test-DockerInstalled correctly detects Docker CLI"
+            Write-Host "✓ Test-DockerInstalled correctly detects Docker"
           } else {
-            Write-Host "✗ Test-DockerInstalled failed (may need PATH refresh)"
-            # Don't fail - WinGet install may need shell restart
+            Write-Host "✗ Test-DockerInstalled failed"
+            exit 1
           }
           
-          # Daemon won't be running for Linux containers, that's expected
-          if (-not (Test-DockerRunning)) {
-            Write-Host "✓ Test-DockerRunning correctly reports daemon not available (expected)"
+          if (Test-ComposeAvailable) {
+            Write-Host "✓ Test-ComposeAvailable correctly detects Docker Compose"
+          } else {
+            Write-Host "✗ Test-ComposeAvailable failed"
+            exit 1
           }
+          
+          # Note: Docker daemon IS running on Windows runners, but with Windows containers
+          Write-Host "Docker daemon status: $(Test-DockerRunning)"
 
       # ----------------------------------------
       # Cursor Installation Test
       # ----------------------------------------
-      - name: "Test 7: Install Cursor via WinGet"
+      - name: "Test 6: Install Cursor via WinGet"
         shell: pwsh
         run: |
-          Write-Host "==> Installing Cursor IDE..."
+          Write-Host "==> Installing Cursor IDE via WinGet..."
           
-          try {
-            winget install -e --id Cursor.Cursor --accept-source-agreements --accept-package-agreements
+          # Correct package ID: Anysphere.Cursor
+          # Reference: https://winstall.app/apps/Anysphere.Cursor
+          winget install -e --id Anysphere.Cursor --accept-source-agreements --accept-package-agreements
+          
+          if ($LASTEXITCODE -eq 0) {
             Write-Host "✓ Cursor installed via WinGet"
-          }
-          catch {
-            Write-Host "⚠ Cursor installation failed (may require interactive setup)"
-            Write-Host "This is expected in some CI environments"
+          } else {
+            Write-Host "✗ Cursor installation failed"
+            exit 1
           }
 
-      - name: "Test 8: Verify Cursor installation"
+      - name: "Test 7: Verify Cursor detection after install"
         shell: pwsh
         run: |
           . .\scripts\utils.ps1
           . .\scripts\install-cursor-windows.ps1
           
-          Write-Host "==> Checking for Cursor..."
+          Write-Host "==> Testing Cursor detection after install..."
           
-          # Check common install paths
-          $cursorPaths = @(
-            "$env:LOCALAPPDATA\Programs\cursor\Cursor.exe",
-            "$env:ProgramFiles\Cursor\Cursor.exe"
-          )
-          
-          $found = $false
-          foreach ($path in $cursorPaths) {
-            if (Test-Path $path) {
-              Write-Host "✓ Cursor found at: $path"
-              $found = $true
-              break
-            }
+          # Check if Cursor is detected
+          if (Test-CursorInstalled) {
+            Write-Host "✓ Test-CursorInstalled correctly detects Cursor"
+          } else {
+            Write-Host "✗ Test-CursorInstalled failed to detect Cursor"
+            exit 1
           }
           
-          if (-not $found) {
-            Write-Host "⚠ Cursor not found in expected paths (may need reboot or interactive install)"
+          # Test the Get-CursorPath function
+          $path = Get-CursorPath
+          if ($path) {
+            Write-Host "✓ Cursor found at: $path"
+          } else {
+            Write-Host "⚠ Get-CursorPath returned null (may need PATH refresh)"
           }
 
-      - name: "Test 9: Dev helper commands"
+      - name: "Test 8: Dev helper commands"
         shell: pwsh
         run: |
           cd windows
