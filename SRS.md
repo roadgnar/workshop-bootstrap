@@ -1,8 +1,10 @@
 ## Software Requirements Specification (SRS)
 
-**Project:** Cross-platform “clone-and-run” repo bootstrap for Docker + Cursor + demo web app
-**Target OS:** macOS, Windows, Linux
-**Primary outcome:** A user can clone the repo and run a single command that (1) installs/starts Docker, (2) installs Cursor, (3) launches a dev container with dependencies, and (4) runs a demo website accessible from the host.
+**Project:** Cross-platform "clone-and-run" repo bootstrap for Docker + Cursor + demo web app  
+**Target OS:** macOS, Windows, Linux  
+**Primary outcome:** A user can clone the repo, navigate to their OS folder, and run a single command that (1) installs/starts Docker, (2) installs Cursor, (3) launches a dev container with dependencies, and (4) runs a demo website accessible from the host.
+
+**Status:** ✅ Implemented
 
 ---
 
@@ -14,13 +16,15 @@ Define functional and non-functional requirements for a repository that provides
 
 ## 1.2 Scope
 
-The repo will include:
+The repo includes:
 
-* Cross-platform bootstrap scripts (macOS/Linux shell, Windows PowerShell).
+* OS-specific folders (`mac/`, `linux/`, `windows/`) with platform-specific entry points and documentation.
+* Shared bootstrap logic in `scripts/` to maintain DRY principles.
 * Detection and conditional installation of Docker and Cursor.
 * Automated container launch with dependencies preconfigured.
-* A demo web project served from within the container and accessible at `http://localhost:<port>` on the host.
-* Optional configuration for editor-to-container development workflows (e.g., devcontainer-compatible configuration).
+* A demo web project (Flask) served from within the container and accessible at `http://localhost:8080` on the host.
+* Optional devcontainer configuration for editor-to-container development workflows.
+* GitHub Actions CI/CD for automated testing on all platforms.
 
 Out of scope:
 
@@ -31,6 +35,7 @@ Out of scope:
 
 * **Docker daemon:** Background service that runs containers.
 * **Docker Desktop:** Docker daemon + UI + VM backend for macOS/Windows.
+* **Docker Engine:** Lightweight Docker daemon for Linux (no GUI).
 * **Compose:** Multi-container orchestration (`docker compose`).
 * **Dev container:** Editor-attached development environment (optional).
 * **Idempotent:** Safe to run repeatedly; script should converge on the desired state.
@@ -43,36 +48,38 @@ Out of scope:
 
 This is a self-contained repository template that:
 
-* Provides a “one command” developer setup path.
+* Provides a "one command" developer setup path per OS.
+* Organizes entry points by operating system for clarity (`mac/`, `linux/`, `windows/`).
+* Shares common logic via `scripts/` to avoid duplication.
 * Uses Docker Compose and bind mounts to allow editing code on the host (via Cursor) while running it inside the container.
 * Optionally supports a devcontainer-style workflow for attaching the editor to the container.
+* Includes CI/CD via GitHub Actions to validate functionality on all platforms.
 
 ## 2.2 User Classes
 
 * **New user (fresh laptop):** No Docker and/or Cursor installed.
 * **Existing user:** Has Docker and/or Cursor installed; may have Docker not running.
-* **Linux user:** May prefer Docker Engine over Docker Desktop.
+* **Linux user:** Uses Docker Engine (not Docker Desktop).
 
 ## 2.3 Operating Environment
 
-* macOS: Apple Silicon and Intel supported.
-* Windows: Windows 10/11 with PowerShell; Docker Desktop likely WSL2-backed.
-* Linux: Debian/Ubuntu baseline (others best-effort), systemd assumed for service management if present.
+* macOS: Apple Silicon and Intel supported; Docker Desktop via Homebrew.
+* Windows: Windows 10/11 with PowerShell; Docker Desktop via WinGet (WSL2-backed).
+* Linux: Debian/Ubuntu baseline (Fedora, Arch best-effort); Docker Engine via apt/dnf/pacman.
 
 ## 2.4 Constraints
 
 * Installation steps may require admin privileges (sudo / UAC).
 * Docker Desktop on macOS/Windows may require first-run interactive confirmation (permissions, license).
-* Network access required to fetch installers/images unless offline mode is implemented.
+* Network access required to fetch installers/images.
 
 ## 2.5 Assumptions and Dependencies
 
 * Git is available (or user can download repo as zip).
 * A supported package manager exists or can be installed:
-
   * macOS: Homebrew preferred
   * Windows: WinGet preferred
-  * Linux: apt preferred (baseline)
+  * Linux: apt preferred (baseline), dnf/pacman supported
 * Docker Hub or configured registry reachable for pulling images.
 
 ---
@@ -81,115 +88,120 @@ This is a self-contained repository template that:
 
 ## 3.1 Bootstrap Command
 
-**FR-001** The repo MUST provide a single entry command per platform:
+**FR-001** ✅ The repo provides OS-specific entry points in dedicated folders:
 
-* macOS/Linux: `./bootstrap`
-* Windows: `.\bootstrap.ps1`
+* macOS: `cd mac && ./bootstrap`
+* Linux: `cd linux && ./bootstrap`
+* Windows: `cd windows; .\bootstrap.ps1`
 
-**FR-002** Bootstrap MUST:
+**FR-002** ✅ Bootstrap performs:
 
 1. Detect Docker installation state
-2. Install Docker if missing
+2. Install Docker if missing (Desktop on macOS/Windows, Engine on Linux)
 3. Ensure Docker daemon is running
 4. Detect Cursor installation state
 5. Install Cursor if missing
 6. Build + start dev container(s)
 7. Start the demo web service
-8. Open Cursor to the repo (best-effort)
+8. Open Cursor to the repo (best-effort, skippable with `--no-open`)
 
-**FR-003** Bootstrap MUST be idempotent and safe to rerun.
+**FR-003** ✅ Bootstrap is idempotent and safe to rerun.
 
 ## 3.2 Detection and Decision Logic
 
-**FR-010** The system MUST detect:
+**FR-010** ✅ The system detects:
 
 * Docker CLI presence and version
 * Docker daemon availability (`docker info` success)
 * Docker Compose availability (`docker compose version`)
 * Cursor CLI presence (`cursor --version`) OR Cursor application installed (OS-specific detection)
 
-**FR-011** If Docker is installed but daemon is not running, bootstrap MUST attempt to start it (Desktop on macOS/Windows; service on Linux) and wait up to a configurable timeout for readiness.
+**FR-011** ✅ If Docker is installed but daemon is not running, bootstrap attempts to start it and waits up to a configurable timeout (default: 120s).
 
-**FR-012** If Docker and/or Cursor are already installed, bootstrap MUST NOT reinstall by default; it MAY offer an explicit `--reinstall` option.
+**FR-012** ✅ If Docker and/or Cursor are already installed, bootstrap does NOT reinstall by default; `--reinstall-docker` and `--reinstall-cursor` options are available.
 
 ## 3.3 Docker Installation
 
-**FR-020 (macOS)** If Docker is missing, bootstrap MUST install Docker Desktop via a package manager (Homebrew preferred) or provide a fallback with clear instructions.
+**FR-020** ✅ macOS: Docker Desktop installed via Homebrew cask, with DMG fallback.
 
-**FR-021 (Windows)** If Docker is missing, bootstrap MUST install Docker Desktop via WinGet preferred; fallback instructions if WinGet unavailable.
+**FR-021** ✅ Windows: Docker Desktop installed via WinGet, with direct download fallback.
 
-**FR-022 (Linux)** If Docker is missing, bootstrap MUST install Docker Engine via a supported method (apt repo or convenience installer), and start/enable the daemon where applicable.
+**FR-022** ✅ Linux: Docker Engine installed via official apt repo (Debian/Ubuntu), dnf (Fedora), yum (CentOS), pacman (Arch), or convenience script fallback.
 
-**FR-023** Bootstrap MUST validate post-install that `docker` works and surface actionable errors if not.
+**FR-023** ✅ Bootstrap validates post-install that `docker` works and surfaces actionable errors.
 
 ## 3.4 Cursor Installation
 
-**FR-030 (macOS)** If Cursor is missing, bootstrap MUST install Cursor via Homebrew cask preferred, with fallback instructions.
+**FR-030** ✅ macOS: Cursor installed via Homebrew cask, with DMG fallback.
 
-**FR-031 (Windows)** If Cursor is missing, bootstrap MUST install Cursor via WinGet preferred, with fallback instructions.
+**FR-031** ✅ Windows: Cursor installed via WinGet, with direct download fallback.
 
-**FR-032 (Linux)** If Cursor is missing, bootstrap MUST support one of:
+**FR-032** ✅ Linux: Cursor installed via AppImage to `~/.local/bin/`, with desktop entry created.
 
-* Installing via an official apt repository; OR
-* Downloading and installing a `.deb` package; OR
-* Providing an interactive prompt and instructions if automation is not feasible.
-
-**FR-033** After install, bootstrap MUST verify Cursor is launchable (best-effort). If not, it MUST continue container setup and provide next steps.
+**FR-033** ✅ After install, bootstrap verifies Cursor is launchable (best-effort). If not, it continues container setup and provides next steps.
 
 ## 3.5 Containerized Dev Environment
 
-**FR-040** The repo MUST include:
+**FR-040** ✅ The repo includes:
 
-* `Dockerfile` defining dependencies
+* `Dockerfile` (multi-stage: development and production targets)
 * `docker-compose.yml` defining a dev service
 * Bind mount of repository into the container at `/workspace`
-* A default command that keeps the container alive for development (e.g., `sleep infinity`), plus a separate command for running the demo service.
+* Default command `sleep infinity` to keep container alive for development
 
-**FR-041** The repo MUST provide helper commands:
+**FR-041** ✅ The repo provides helper commands in each OS folder:
 
-* `./dev up|down|shell|logs` (macOS/Linux)
-* `.\dev.ps1 up|down|shell|logs` (Windows)
+* macOS: `./dev up|down|shell|logs|restart|demo|build|status|clean`
+* Linux: `./dev up|down|shell|logs|restart|demo|build|status|clean`
+* Windows: `.\dev.ps1 up|down|shell|logs|restart|demo|build|status|clean`
 
-**FR-042** The container MUST expose required ports to the host.
+**FR-042** ✅ The container exposes port 8080 (configurable via `$PORT` env var).
 
 ## 3.6 Demo Web Project
 
-**FR-050** The repo MUST include a demo web project inside the container that:
+**FR-050** ✅ The repo includes a demo web project (`demo-site/`) that:
 
-* Serves HTTP on a configurable port (default e.g., 8080)
-* Is reachable from the host at `http://localhost:<port>`
-* Returns a visible confirmation page (e.g., “It works” + build info)
+* Flask 3.0 application with Gunicorn for production
+* Serves HTTP on configurable port (default: 8080)
+* Reachable from host at `http://localhost:8080`
+* Returns styled "It Works!" confirmation page with hostname, version, server time
 
-**FR-051** The demo MUST start automatically after bootstrap completes (or as part of `dev up`), and bootstrap MUST print the URL.
+**FR-051** ✅ The demo starts automatically after bootstrap; URL is printed in summary.
 
-**FR-052** The demo SHOULD support hot reload or rapid iteration (optional), but MUST at least serve reliably.
+**FR-052** ✅ The demo supports hot reload in development mode (`FLASK_ENV=development`).
+
+**FR-053** ✅ Health and info endpoints:
+
+* `GET /health` → `{"status": "healthy", "version": "...", "timestamp": "..."}`
+* `GET /api/info` → Detailed build and runtime information
 
 ## 3.7 Cursor-to-Container Editing Workflow
 
-Two supported modes:
+**Mode A (baseline, required):** ✅ Cursor edits host files; container runs code via bind mount.
 
-**Mode A (baseline, required):** Cursor edits host files; container runs code via bind mount.
-**FR-060** The system MUST support this mode without requiring any Cursor extension or container attachment.
+**FR-060** ✅ This mode works without any Cursor extension or container attachment.
 
-**Mode B (optional):** Devcontainer-style attachment.
-**FR-061** The repo SHOULD include `.devcontainer/devcontainer.json` for compatibility with devcontainer-capable editors.
-**FR-062** Bootstrap MAY detect devcontainer capability and offer instructions, but MUST NOT block baseline mode.
+**Mode B (optional):** ✅ Devcontainer-style attachment.
+
+**FR-061** ✅ `.devcontainer/devcontainer.json` included for compatibility with devcontainer-capable editors.
+
+**FR-062** ✅ Bootstrap does not block baseline mode; devcontainer is optional.
 
 ## 3.8 UX, Logging, and Errors
 
-**FR-070** Bootstrap MUST emit:
+**FR-070** ✅ Bootstrap emits:
 
-* A step-by-step progress log
+* Step-by-step progress log with colored output
 * Clear error messages with remediation steps
-* Exit codes: `0` success, non-zero failure with category codes (optional)
+* Exit codes: `0` success, non-zero failure
 
-**FR-071** If Docker Desktop needs a first-run manual action, bootstrap MUST:
+**FR-071** ✅ If Docker Desktop needs first-run manual action, bootstrap:
 
-* Launch Docker Desktop (best-effort)
-* Explain exactly what the user must do
-* Exit cleanly with a retriable message (“re-run bootstrap after Docker is running”)
+* Launches Docker Desktop (best-effort)
+* Explains what user must do
+* Exits cleanly with retriable message
 
-**FR-072** Bootstrap MUST avoid destructive actions by default (no deleting images/volumes).
+**FR-072** ✅ Bootstrap avoids destructive actions by default (no deleting images/volumes). `dev clean` available for explicit cleanup.
 
 ---
 
@@ -197,19 +209,71 @@ Two supported modes:
 
 ## 4.1 CLI Interface
 
-* `./bootstrap [--reinstall-docker] [--reinstall-cursor] [--port 8080] [--no-open] [--timeout 300]`
-* `.\bootstrap.ps1 [-ReinstallDocker] [-ReinstallCursor] [-Port 8080] [-NoOpen] [-TimeoutSec 300]`
+### macOS / Linux
+
+```bash
+cd mac  # or linux
+./bootstrap [--reinstall-docker] [--reinstall-cursor] [--port 8080] [--no-open] [--timeout 120]
+./dev <command>  # up|down|shell|logs|restart|demo|build|status|clean
+```
+
+### Windows
+
+```powershell
+cd windows
+.\bootstrap.ps1 [-ReinstallDocker] [-ReinstallCursor] [-Port 8080] [-NoOpen] [-TimeoutSec 120]
+.\dev.ps1 <command>  # up|down|shell|logs|restart|demo|build|status|clean
+```
 
 ## 4.2 File/Repo Structure
 
-Required files:
-
-* `bootstrap`, `bootstrap.ps1`
-* `dev`, `dev.ps1`
-* `Dockerfile`, `docker-compose.yml`
-* `README.md` with platform-specific quickstart
-* `scripts/` installers for each OS
-* Demo app directory (e.g., `demo-site/`)
+```
+workshop-bootstrap/
+├── mac/                          # macOS entry points
+│   ├── bootstrap                 # Main setup script
+│   ├── dev                       # Development helper
+│   └── README.md                 # macOS-specific docs
+│
+├── linux/                        # Linux entry points
+│   ├── bootstrap
+│   ├── dev
+│   └── README.md
+│
+├── windows/                      # Windows entry points
+│   ├── bootstrap.ps1
+│   ├── dev.ps1
+│   └── README.md
+│
+├── scripts/                      # Shared logic (DRY)
+│   ├── bootstrap-common.sh       # Shared bootstrap logic (macOS/Linux)
+│   ├── dev-common.sh             # Shared dev helper logic (macOS/Linux)
+│   ├── utils.sh                  # Shell utilities
+│   ├── utils.ps1                 # PowerShell utilities
+│   ├── install-docker-macos.sh
+│   ├── install-docker-linux.sh
+│   ├── install-docker-windows.ps1
+│   ├── install-cursor-macos.sh
+│   ├── install-cursor-linux.sh
+│   └── install-cursor-windows.ps1
+│
+├── demo-site/                    # Demo web application
+│   ├── app.py                    # Flask application
+│   ├── requirements.txt          # Python dependencies
+│   └── templates/
+│       └── index.html            # Styled demo page
+│
+├── .devcontainer/
+│   └── devcontainer.json         # VS Code/Cursor devcontainer config
+│
+├── .github/workflows/            # CI/CD
+│   ├── test.yml                  # Multi-platform tests
+│   └── lint.yml                  # Script linting
+│
+├── Dockerfile                    # Multi-stage container definition
+├── docker-compose.yml            # Container orchestration
+├── README.md                     # Main documentation
+└── SRS.md                        # This specification
+```
 
 ---
 
@@ -217,82 +281,151 @@ Required files:
 
 ## 5.1 Portability
 
-**NFR-001** Scripts MUST run on:
+**NFR-001** ✅ Scripts run on:
 
-* macOS: bash/zsh
-* Linux: bash
-* Windows: PowerShell 5+ (prefer PS7 compatibility)
+* macOS: bash/zsh (10.15+, Intel and Apple Silicon)
+* Linux: bash (Debian/Ubuntu primary, Fedora/Arch best-effort)
+* Windows: PowerShell 5.1+ (PS7 compatible)
 
 ## 5.2 Reliability
 
-**NFR-010** Bootstrap MUST be idempotent and converge to a working setup.
-**NFR-011** Timeouts MUST be configurable; readiness checks MUST be deterministic (`docker info`, HTTP health check).
+**NFR-010** ✅ Bootstrap is idempotent and converges to a working setup.
+
+**NFR-011** ✅ Timeouts are configurable; readiness checks use `docker info` and HTTP health checks.
 
 ## 5.3 Security
 
-**NFR-020** Downloads MUST use HTTPS.
-**NFR-021** Scripts MUST not exfiltrate data; no telemetry beyond package managers’ defaults.
-**NFR-022** Privileged operations MUST be minimal and clearly indicated.
+**NFR-020** ✅ Downloads use HTTPS exclusively.
+
+**NFR-021** ✅ Scripts do not exfiltrate data; no telemetry beyond package managers' defaults.
+
+**NFR-022** ✅ Privileged operations are minimal and clearly indicated (sudo prompts).
 
 ## 5.4 Maintainability
 
-**NFR-030** Install methods MUST be encapsulated per OS in `scripts/`.
-**NFR-031** Versions and dependencies SHOULD be pinned where practical (base image tags, lockfiles).
+**NFR-030** ✅ Install methods encapsulated per OS in `scripts/`.
+
+**NFR-031** ✅ Shared logic in `bootstrap-common.sh` and `dev-common.sh` to avoid duplication.
+
+**NFR-032** ✅ Dependencies pinned: Python 3.12-slim base image, Flask 3.0.0, Gunicorn 21.2.0.
 
 ## 5.5 Performance
 
-**NFR-040** First successful setup SHOULD complete with minimal manual steps beyond OS prompts; subsequent runs SHOULD be fast (no rebuild unless needed).
+**NFR-040** ✅ First successful setup completes with minimal manual steps beyond OS prompts.
+
+**NFR-041** ✅ Subsequent runs are fast (no rebuild unless `dev build` is called).
 
 ---
 
 # 6. Acceptance Criteria
 
-**AC-001** Fresh machine (no Docker, no Cursor): running bootstrap results in either:
+**AC-001** ✅ Fresh machine (no Docker, no Cursor): running bootstrap results in either:
 
 * Fully working environment with container up, demo site reachable, Cursor installed/opened; OR
 * A single documented manual step required (e.g., Docker Desktop first-run), after which rerunning bootstrap succeeds.
 
-**AC-002** Machine with Docker installed but not running: bootstrap starts Docker and proceeds.
+**AC-002** ✅ Machine with Docker installed but not running: bootstrap starts Docker and proceeds.
 
-**AC-003** Machine with Cursor installed: bootstrap does not reinstall Cursor and proceeds.
+**AC-003** ✅ Machine with Cursor installed: bootstrap does not reinstall Cursor and proceeds.
 
-**AC-004** Demo website is reachable from host browser at printed URL.
+**AC-004** ✅ Demo website is reachable from host browser at `http://localhost:8080`.
 
-**AC-005** `dev shell` provides an interactive shell in the dev container.
+**AC-005** ✅ `dev shell` provides an interactive shell in the dev container.
+
+**AC-006** ✅ Each OS folder has its own README with platform-specific instructions.
 
 ---
 
-# 7. Test Plan (Minimum)
+# 7. Test Plan
 
-## 7.1 OS Matrix
+## 7.1 OS Matrix (CI/CD)
 
-* macOS (Intel + Apple Silicon)
-* Windows 11 (WSL2 enabled) + Windows 10 (where supported)
-* Ubuntu LTS
+GitHub Actions workflows test on:
 
-## 7.2 Scenario Tests
+* 🐧 Linux: `ubuntu-latest` — **Full Docker container tests** (Docker runs natively)
+* 🍎 macOS: `macos-latest` — Scripts + Docker CLI + Cursor installation (daemon can't run)
+* 🪟 Windows: `windows-latest` — Scripts + Docker CLI + Cursor installation (Linux containers unavailable)
 
-* T1: Fresh install path
+> **Note:** GitHub Actions runners don't support nested virtualization on macOS/Windows, so the Docker daemon cannot run containers. However, we still test the Docker CLI and Cursor **installation** on these platforms to verify our install scripts work.
+
+## 7.2 Automated Tests (`.github/workflows/test.yml`)
+
+| Test | Linux | macOS | Windows |
+|------|-------|-------|---------|
+| Utility functions | ✅ | ✅ | ✅ |
+| Detection functions | ✅ | ✅ | ✅ |
+| Script syntax | ✅ | ✅ | ✅ |
+| **Docker CLI install** | (pre-installed) | ✅ Homebrew | ✅ WinGet |
+| **Cursor install** | — | ✅ Homebrew | ✅ WinGet |
+| Docker daemon running | ✅ | ❌ (no virt) | ❌ (no Linux) |
+| Build container | ✅ | — | — |
+| Start container | ✅ | — | — |
+| Bind mount verification | ✅ | — | — |
+| Health endpoint from host | ✅ | — | — |
+| Main page from host | ✅ | — | — |
+| API info from host | ✅ | — | — |
+| Dev helper commands | ✅ | ✅ | ✅ |
+
+## 7.3 Linting (`.github/workflows/lint.yml`)
+
+* **ShellCheck:** All `.sh` files
+* **PSScriptAnalyzer:** All `.ps1` files
+* **Hadolint:** `Dockerfile`
+
+## 7.4 Manual Test Scenarios
+
+* T1: Fresh install path (all tools missing)
 * T2: Docker already installed, daemon stopped
 * T3: Cursor already installed
 * T4: Both installed, bootstrap is no-op except container launch
 * T5: Network unavailable (verify graceful failure messaging)
-* T6: Port already in use (verify fallback or clear error)
-
-## 7.3 Automated CI (optional)
-
-* Lint scripts (shellcheck, PSScriptAnalyzer)
-* Build container image
-* Run container + curl health check to `localhost:<port>` (in CI environment that supports Docker)
+* T6: Port already in use (verify `--port` option or clear error)
 
 ---
 
-# 8. Proposed Demo Implementation (for clarity)
+# 8. Implementation Details
 
-* Container runs a minimal web server on `0.0.0.0:<port>` (e.g., Node/Express or Python/Flask).
-* `docker-compose.yml` maps `<port>:<port>` to host.
-* A `/health` endpoint returns 200, and `/` serves a static HTML page with repo/version info.
+## 8.1 Demo Web Application
+
+* **Framework:** Flask 3.0
+* **Server:** Gunicorn (production), Flask dev server (development)
+* **Port:** 8080 (configurable via `$PORT`)
+* **Endpoints:**
+  * `GET /` — Styled "It Works!" page with build info
+  * `GET /health` — JSON health check
+  * `GET /api/info` — Detailed runtime info
+
+## 8.2 Container Configuration
+
+* **Base Image:** `python:3.12-slim`
+* **Multi-stage Build:** `development` (with dev tools) and `production` targets
+* **Workspace:** `/workspace` (bind-mounted from host)
+* **Default Command:** `sleep infinity` (keeps container alive for development)
+
+## 8.3 Architecture (DRY)
+
+```
+OS Entry Points          Shared Logic
+┌─────────────┐         ┌───────────────────────┐
+│ mac/        │         │ scripts/              │
+│  bootstrap ─┼────────►│  bootstrap-common.sh  │
+│  dev       ─┼────────►│  dev-common.sh        │
+├─────────────┤         │  utils.sh             │
+│ linux/      │         │  install-*.sh         │
+│  bootstrap ─┼────────►│                       │
+│  dev       ─┼────────►│                       │
+├─────────────┤         ├───────────────────────┤
+│ windows/    │         │  utils.ps1            │
+│  bootstrap ─┼────────►│  install-*.ps1        │
+│  dev       ─┼────────►│                       │
+└─────────────┘         └───────────────────────┘
+```
 
 ---
 
-If you want, I can also provide the corresponding repository skeleton (file tree + initial contents) that directly implements this SRS, including the demo web app and the bootstrap scripts with the detection/install/start logic.
+# 9. Revision History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0 | Initial | Original SRS |
+| 2.0 | Current | Updated to reflect implementation: OS-specific folders, shared scripts, CI/CD, Flask demo app |

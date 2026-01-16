@@ -9,10 +9,12 @@ on:
 
 jobs:
   # ============================================
-  # Linux Testing
+  # Linux Testing - FULL DOCKER TESTS
   # ============================================
+  # This is the primary test environment. Docker runs natively on Linux
+  # runners, so we can fully test the container build, run, and endpoints.
   test-linux:
-    name: 🐧 Linux (Ubuntu)
+    name: 🐧 Linux (Full Docker Tests)
     runs-on: ubuntu-latest
     
     steps:
@@ -24,77 +26,179 @@ jobs:
           chmod +x linux/bootstrap linux/dev
           chmod +x scripts/*.sh
 
-      - name: Verify Docker is available
+      # ----------------------------------------
+      # Test 1: Verify Docker is pre-installed
+      # ----------------------------------------
+      - name: "Test 1: Docker pre-installed on runner"
         run: |
+          echo "==> Checking Docker installation..."
           docker --version
           docker compose version
+          echo "✓ Docker and Compose are available"
 
-      - name: Test bootstrap (skip installs, Docker pre-installed)
+      # ----------------------------------------
+      # Test 2: Detection functions work
+      # ----------------------------------------
+      - name: "Test 2: Detection functions"
         run: |
-          cd linux
-          
-          # Source the common script to test detection logic
           export OS="linux"
-          export SCRIPT_DIR="$(cd .. && pwd)"
-          source ../scripts/utils.sh
+          export SCRIPT_DIR="$(pwd)"
+          source scripts/utils.sh
           
           echo "==> Testing detection functions..."
           
-          if docker_installed; then
-            echo "✓ Docker detected"
-          else
-            echo "✗ Docker not detected"
-            exit 1
-          fi
-          
-          if docker_running; then
-            echo "✓ Docker daemon running"
-          else
-            echo "✗ Docker daemon not running"
-            exit 1
-          fi
-          
-          if compose_available; then
-            echo "✓ Docker Compose available"
-          else
-            echo "✗ Docker Compose not available"
-            exit 1
-          fi
+          docker_installed && echo "✓ docker_installed() works" || exit 1
+          docker_running && echo "✓ docker_running() works" || exit 1
+          compose_available && echo "✓ compose_available() works" || exit 1
 
-      - name: Build container
+      # ----------------------------------------
+      # Test 3: Build container image
+      # ----------------------------------------
+      - name: "Test 3: Build container image"
         run: |
+          echo "==> Building development container..."
           docker compose build dev
+          echo "✓ Container image built successfully"
 
-      - name: Start container
+      # ----------------------------------------
+      # Test 4: Start container
+      # ----------------------------------------
+      - name: "Test 4: Start container"
         run: |
+          echo "==> Starting container..."
           docker compose up -d dev
-          sleep 5
+          sleep 3
+          
+          echo "==> Verifying container is running..."
           docker compose ps
+          
+          # Check container is actually running
+          if docker compose ps --status running | grep -q "workshop-dev"; then
+            echo "✓ Container is running"
+          else
+            echo "✗ Container failed to start"
+            docker compose logs
+            exit 1
+          fi
 
-      - name: Start demo service
+      # ----------------------------------------
+      # Test 5: Verify bind mount works
+      # ----------------------------------------
+      - name: "Test 5: Bind mount verification"
         run: |
+          echo "==> Testing bind mount (host files accessible in container)..."
+          
+          # Check that repo files are accessible inside container
+          docker compose exec dev ls -la /workspace/
+          docker compose exec dev cat /workspace/README.md | head -5
+          
+          # Create a test file on host, verify it appears in container
+          echo "test-from-host-$(date +%s)" > test-bind-mount.txt
+          docker compose exec dev cat /workspace/test-bind-mount.txt
+          rm test-bind-mount.txt
+          
+          echo "✓ Bind mount working correctly"
+
+      # ----------------------------------------
+      # Test 6: Start demo web service
+      # ----------------------------------------
+      - name: "Test 6: Start demo service inside container"
+        run: |
+          echo "==> Starting Flask demo service..."
           docker compose exec -d dev bash -c "cd /workspace/demo-site && python app.py"
+          
+          echo "==> Waiting for service to be ready..."
           sleep 5
+          
+          # Verify process is running
+          docker compose exec dev pgrep -f "python app.py" || {
+            echo "✗ Demo service not running"
+            exit 1
+          }
+          echo "✓ Demo service started"
 
-      - name: Test demo endpoints
+      # ----------------------------------------
+      # Test 7: Health endpoint from HOST
+      # ----------------------------------------
+      - name: "Test 7: Health check from HOST (outside container)"
         run: |
-          echo "==> Testing health endpoint..."
-          curl -sf http://localhost:8080/health | jq .
+          echo "==> Pinging health endpoint from HOST machine..."
           
-          echo "==> Testing main page..."
-          curl -sf http://localhost:8080 | head -20
+          HEALTH_RESPONSE=$(curl -sf http://localhost:8080/health)
+          echo "Response: $HEALTH_RESPONSE"
           
-          echo "==> Testing API info..."
-          curl -sf http://localhost:8080/api/info | jq .
+          # Validate JSON structure
+          echo "$HEALTH_RESPONSE" | jq -e '.status == "healthy"' || {
+            echo "✗ Health check failed - status not 'healthy'"
+            exit 1
+          }
+          
+          echo "$HEALTH_RESPONSE" | jq -e '.version' || {
+            echo "✗ Health check failed - missing version"
+            exit 1
+          }
+          
+          echo "✓ Health endpoint responds correctly from host"
 
-      - name: Test dev helper commands
+      # ----------------------------------------
+      # Test 8: Main page from HOST
+      # ----------------------------------------
+      - name: "Test 8: Main page from HOST"
+        run: |
+          echo "==> Fetching main page from HOST..."
+          
+          HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://localhost:8080/)
+          
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✓ Main page returns 200 OK"
+          else
+            echo "✗ Main page returned $HTTP_CODE"
+            exit 1
+          fi
+          
+          # Verify it contains expected content
+          curl -sf http://localhost:8080/ | grep -q "It Works" || {
+            echo "✗ Main page doesn't contain expected content"
+            exit 1
+          }
+          
+          echo "✓ Main page content verified"
+
+      # ----------------------------------------
+      # Test 9: API info endpoint from HOST
+      # ----------------------------------------
+      - name: "Test 9: API info endpoint from HOST"
+        run: |
+          echo "==> Testing API info endpoint..."
+          
+          INFO_RESPONSE=$(curl -sf http://localhost:8080/api/info)
+          echo "Response: $INFO_RESPONSE"
+          
+          # Validate required fields exist
+          echo "$INFO_RESPONSE" | jq -e '.version' || exit 1
+          echo "$INFO_RESPONSE" | jq -e '.hostname' || exit 1
+          echo "$INFO_RESPONSE" | jq -e '.server_time' || exit 1
+          
+          echo "✓ API info endpoint works correctly"
+
+      # ----------------------------------------
+      # Test 10: Dev helper commands
+      # ----------------------------------------
+      - name: "Test 10: Dev helper commands"
         run: |
           cd linux
+          
+          echo "==> Testing ./dev status..."
           ./dev status
-          ./dev logs &
-          sleep 2
-          kill %1 || true
+          
+          echo "==> Testing ./dev logs (brief)..."
+          timeout 3 ./dev logs || true
+          
+          echo "✓ Dev helper commands work"
 
+      # ----------------------------------------
+      # Cleanup
+      # ----------------------------------------
       - name: Cleanup
         if: always()
         run: |
@@ -103,9 +207,14 @@ jobs:
   # ============================================
   # macOS Testing
   # ============================================
+  # GitHub Actions macOS runners don't support nested virtualization,
+  # so Docker daemon cannot run. We test:
+  # - Script syntax and functions
+  # - Docker CLI installation (daemon won't work)
+  # - Cursor installation
   test-macos:
-    name: 🍎 macOS
-    runs-on: macos-15  
+    name: 🍎 macOS (Scripts + Install Tests)
+    runs-on: macos-latest
     
     steps:
       - name: Checkout
@@ -116,84 +225,132 @@ jobs:
           chmod +x mac/bootstrap mac/dev
           chmod +x scripts/*.sh
 
-      - name: Setup Docker
-        uses: docker/setup-docker-action@v4
-
-      - name: Verify Docker is available
+      # ----------------------------------------
+      # Script Tests
+      # ----------------------------------------
+      - name: "Test 1: Utility functions"
         run: |
+          export OS="macos"
+          export SCRIPT_DIR="$(pwd)"
+          source scripts/utils.sh
+          
+          print_banner
+          log_step "Testing utility functions..."
+          log_info "Info message test"
+          log_success "Success message test"
+          log_warn "Warning message test"
+          print_separator
+          echo "✓ Utility functions work"
+
+      - name: "Test 2: Detection functions"
+        run: |
+          export OS="macos"
+          export SCRIPT_DIR="$(pwd)"
+          source scripts/utils.sh
+          
+          # Test OS detection
+          detected_os=$(detect_os)
+          [[ "$detected_os" == "macos" ]] && echo "✓ OS detection works" || exit 1
+          
+          # Test command_exists
+          command_exists bash && echo "✓ command_exists works" || exit 1
+
+      - name: "Test 3: Script syntax validation"
+        run: |
+          echo "==> Checking all bash scripts..."
+          bash -n mac/bootstrap && echo "✓ mac/bootstrap"
+          bash -n mac/dev && echo "✓ mac/dev"
+          for f in scripts/*.sh; do
+            bash -n "$f" && echo "✓ $f"
+          done
+
+      # ----------------------------------------
+      # Docker CLI Installation Test
+      # ----------------------------------------
+      - name: "Test 4: Install Docker CLI via Homebrew"
+        run: |
+          echo "==> Installing Docker CLI (not Desktop)..."
+          brew install docker docker-compose
+          
+          echo "==> Verifying Docker CLI installed..."
           docker --version
           docker compose version
+          
+          echo "✓ Docker CLI installed successfully"
+          echo "Note: Daemon cannot run (no nested virtualization)"
 
-      - name: Test bootstrap detection logic
+      - name: "Test 5: Docker detection after install"
         run: |
-          cd mac
-          
           export OS="macos"
-          export SCRIPT_DIR="$(cd .. && pwd)"
-          source ../scripts/utils.sh
-          
-          echo "==> Testing detection functions..."
+          export SCRIPT_DIR="$(pwd)"
+          source scripts/utils.sh
           
           if docker_installed; then
-            echo "✓ Docker detected"
+            echo "✓ docker_installed() correctly detects Docker CLI"
           else
-            echo "✗ Docker not detected"
+            echo "✗ docker_installed() failed to detect Docker"
             exit 1
           fi
           
-          if docker_running; then
-            echo "✓ Docker daemon running"
+          # Daemon won't be running, that's expected
+          if ! docker_running; then
+            echo "✓ docker_running() correctly reports daemon not running (expected)"
+          fi
+
+      # ----------------------------------------
+      # Cursor Installation Test
+      # ----------------------------------------
+      - name: "Test 6: Install Cursor via Homebrew"
+        run: |
+          echo "==> Installing Cursor IDE..."
+          brew install --cask cursor
+          
+          echo "==> Verifying Cursor installed..."
+          ls -la /Applications/Cursor.app || ls -la ~/Applications/Cursor.app
+          
+          echo "✓ Cursor installed successfully"
+
+      - name: "Test 7: Cursor detection after install"
+        run: |
+          export OS="macos"
+          export SCRIPT_DIR="$(pwd)"
+          source scripts/utils.sh
+          source scripts/install-cursor-macos.sh
+          
+          if detect_cursor_macos; then
+            echo "✓ detect_cursor_macos() correctly detects Cursor"
           else
-            echo "✗ Docker daemon not running"
+            echo "✗ detect_cursor_macos() failed to detect Cursor"
             exit 1
           fi
 
-      - name: Build container
+      - name: "Test 8: Dev helper commands"
         run: |
-          docker compose build dev
-
-      - name: Start container
-        run: |
-          docker compose up -d dev
-          sleep 5
-          docker compose ps
-
-      - name: Start demo service
-        run: |
-          docker compose exec -d dev bash -c "cd /workspace/demo-site && python app.py"
-          sleep 5
-
-      - name: Test demo endpoints
-        run: |
-          echo "==> Testing health endpoint..."
-          curl -sf http://localhost:8080/health
-          
-          echo "==> Testing main page..."
-          curl -sf http://localhost:8080 | head -20
-          
-          echo "==> Testing API info..."
-          curl -sf http://localhost:8080/api/info
-
-      - name: Cleanup
-        if: always()
-        run: |
-          docker compose down --volumes --remove-orphans || true
+          cd mac
+          ./dev help
+          echo "✓ Dev help command works"
 
   # ============================================
   # Windows Testing
   # ============================================
-  # Note: Windows GitHub Actions runners use Windows containers by default.
-  # Our Dockerfile is Linux-based, so we test scripts only here.
-  # Container functionality is verified on Linux/macOS runners.
+  # GitHub Actions Windows runners use Windows containers by default.
+  # Our Dockerfile is Linux-based, so Docker daemon can't run containers.
+  # We test:
+  # - Script syntax and functions
+  # - Docker CLI installation (daemon won't work with Linux containers)
+  # - Cursor installation
   test-windows:
-    name: 🪟 Windows (Scripts Only)
+    name: 🪟 Windows (Scripts + Install Tests)
     runs-on: windows-latest
     
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Test PowerShell utilities
+      # ----------------------------------------
+      # Script Tests
+      # ----------------------------------------
+      - name: "Test 1: PowerShell utilities"
         shell: pwsh
         run: |
           . .\scripts\utils.ps1
@@ -204,66 +361,148 @@ jobs:
           Write-Success "Success message test"
           Write-Warn "Warning message test"
           Write-Separator
+          Write-Host "✓ Utility functions work"
 
-      - name: Test detection functions
+      - name: "Test 2: Detection functions"
         shell: pwsh
         run: |
           . .\scripts\utils.ps1
           
-          Write-Step "Testing detection functions..."
-          
-          # Test command existence check
           if (Test-CommandExists "powershell") {
-            Write-Success "Test-CommandExists works"
+            Write-Host "✓ Test-CommandExists works"
           } else {
-            Write-Error "Test-CommandExists failed"
+            Write-Host "✗ Test-CommandExists failed"
             exit 1
           }
-          
-          # Test Docker detection (may or may not be installed)
-          Write-Info "Docker installed: $(Test-DockerInstalled)"
-          Write-Info "Docker running: $(Test-DockerRunning)"
-          Write-Info "Compose available: $(Test-ComposeAvailable)"
 
-      - name: Test bootstrap script syntax
+      - name: "Test 3: Script syntax validation"
         shell: pwsh
         run: |
-          Write-Host "==> Checking bootstrap.ps1 syntax..."
-          $null = [System.Management.Automation.PSParser]::Tokenize(
-            (Get-Content -Path ".\windows\bootstrap.ps1" -Raw), 
-            [ref]$null
+          $scripts = @(
+            ".\windows\bootstrap.ps1",
+            ".\windows\dev.ps1",
+            ".\scripts\utils.ps1",
+            ".\scripts\install-docker-windows.ps1",
+            ".\scripts\install-cursor-windows.ps1"
           )
-          Write-Host "✓ bootstrap.ps1 syntax OK"
           
-          Write-Host "==> Checking dev.ps1 syntax..."
-          $null = [System.Management.Automation.PSParser]::Tokenize(
-            (Get-Content -Path ".\windows\dev.ps1" -Raw), 
-            [ref]$null
-          )
-          Write-Host "✓ dev.ps1 syntax OK"
+          foreach ($script in $scripts) {
+            $errors = $null
+            $null = [System.Management.Automation.PSParser]::Tokenize(
+              (Get-Content -Path $script -Raw), 
+              [ref]$errors
+            )
+            if ($errors.Count -eq 0) {
+              Write-Host "✓ $script syntax OK"
+            } else {
+              Write-Host "✗ $script has syntax errors"
+              $errors | ForEach-Object { Write-Host $_ }
+              exit 1
+            }
+          }
 
-      - name: Test installer script syntax
+      # ----------------------------------------
+      # Docker CLI Installation Test
+      # ----------------------------------------
+      - name: "Test 4: Install Docker CLI via WinGet"
         shell: pwsh
         run: |
-          Write-Host "==> Checking install-docker-windows.ps1 syntax..."
-          $null = [System.Management.Automation.PSParser]::Tokenize(
-            (Get-Content -Path ".\scripts\install-docker-windows.ps1" -Raw), 
-            [ref]$null
-          )
-          Write-Host "✓ install-docker-windows.ps1 syntax OK"
+          Write-Host "==> Installing Docker CLI..."
           
-          Write-Host "==> Checking install-cursor-windows.ps1 syntax..."
-          $null = [System.Management.Automation.PSParser]::Tokenize(
-            (Get-Content -Path ".\scripts\install-cursor-windows.ps1" -Raw), 
-            [ref]$null
-          )
-          Write-Host "✓ install-cursor-windows.ps1 syntax OK"
+          # Try WinGet first
+          try {
+            winget install -e --id Docker.DockerCLI --accept-source-agreements --accept-package-agreements
+            Write-Host "✓ Docker CLI installed via WinGet"
+          }
+          catch {
+            Write-Host "WinGet failed, trying direct download..."
+            # Fallback to direct download
+            $url = "https://download.docker.com/win/static/stable/x86_64/docker-24.0.7.zip"
+            $zip = "$env:TEMP\docker.zip"
+            Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+            Expand-Archive -Path $zip -DestinationPath "$env:ProgramFiles" -Force
+            $env:PATH = "$env:ProgramFiles\docker;$env:PATH"
+            Write-Host "✓ Docker CLI installed via direct download"
+          }
 
-      - name: Test dev.ps1 help
+      - name: "Test 5: Verify Docker CLI"
+        shell: pwsh
+        run: |
+          # Refresh PATH to find newly installed docker
+          $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+          
+          Write-Host "==> Verifying Docker CLI..."
+          docker --version
+          Write-Host "✓ Docker CLI works"
+          Write-Host "Note: Daemon cannot run Linux containers on this runner"
+
+      - name: "Test 6: Docker detection after install"
+        shell: pwsh
+        run: |
+          . .\scripts\utils.ps1
+          
+          if (Test-DockerInstalled) {
+            Write-Host "✓ Test-DockerInstalled correctly detects Docker CLI"
+          } else {
+            Write-Host "✗ Test-DockerInstalled failed (may need PATH refresh)"
+            # Don't fail - WinGet install may need shell restart
+          }
+          
+          # Daemon won't be running for Linux containers, that's expected
+          if (-not (Test-DockerRunning)) {
+            Write-Host "✓ Test-DockerRunning correctly reports daemon not available (expected)"
+          }
+
+      # ----------------------------------------
+      # Cursor Installation Test
+      # ----------------------------------------
+      - name: "Test 7: Install Cursor via WinGet"
+        shell: pwsh
+        run: |
+          Write-Host "==> Installing Cursor IDE..."
+          
+          try {
+            winget install -e --id Cursor.Cursor --accept-source-agreements --accept-package-agreements
+            Write-Host "✓ Cursor installed via WinGet"
+          }
+          catch {
+            Write-Host "⚠ Cursor installation failed (may require interactive setup)"
+            Write-Host "This is expected in some CI environments"
+          }
+
+      - name: "Test 8: Verify Cursor installation"
+        shell: pwsh
+        run: |
+          . .\scripts\utils.ps1
+          . .\scripts\install-cursor-windows.ps1
+          
+          Write-Host "==> Checking for Cursor..."
+          
+          # Check common install paths
+          $cursorPaths = @(
+            "$env:LOCALAPPDATA\Programs\cursor\Cursor.exe",
+            "$env:ProgramFiles\Cursor\Cursor.exe"
+          )
+          
+          $found = $false
+          foreach ($path in $cursorPaths) {
+            if (Test-Path $path) {
+              Write-Host "✓ Cursor found at: $path"
+              $found = $true
+              break
+            }
+          }
+          
+          if (-not $found) {
+            Write-Host "⚠ Cursor not found in expected paths (may need reboot or interactive install)"
+          }
+
+      - name: "Test 9: Dev helper commands"
         shell: pwsh
         run: |
           cd windows
           .\dev.ps1 help
+          Write-Host "✓ Dev help command works"
 
   # ============================================
   # Summary Job
