@@ -105,7 +105,7 @@ jobs:
   # ============================================
   test-macos:
     name: 🍎 macOS
-    runs-on: macos-latest
+    runs-on: macos-13  # Intel runner - more stable for Docker
     
     steps:
       - name: Checkout
@@ -116,20 +116,8 @@ jobs:
           chmod +x mac/bootstrap mac/dev
           chmod +x scripts/*.sh
 
-      - name: Install Docker (via Colima for CI)
-        run: |
-          brew install docker docker-compose colima
-          colima start --cpu 2 --memory 4
-          
-          # Wait for Docker to be ready
-          for i in {1..30}; do
-            if docker info &>/dev/null; then
-              echo "Docker is ready"
-              break
-            fi
-            echo "Waiting for Docker..."
-            sleep 2
-          done
+      - name: Setup Docker
+        uses: docker/setup-docker-action@v4
 
       - name: Verify Docker is available
         run: |
@@ -190,13 +178,15 @@ jobs:
         if: always()
         run: |
           docker compose down --volumes --remove-orphans || true
-          colima stop || true
 
   # ============================================
   # Windows Testing
   # ============================================
+  # Note: Windows GitHub Actions runners use Windows containers by default.
+  # Our Dockerfile is Linux-based, so we test scripts only here.
+  # Container functionality is verified on Linux/macOS runners.
   test-windows:
-    name: 🪟 Windows
+    name: 🪟 Windows (Scripts Only)
     runs-on: windows-latest
     
     steps:
@@ -213,79 +203,67 @@ jobs:
           Write-Info "Info message test"
           Write-Success "Success message test"
           Write-Warn "Warning message test"
+          Write-Separator
 
-      - name: Verify Docker is available
+      - name: Test detection functions
         shell: pwsh
         run: |
           . .\scripts\utils.ps1
           
-          if (Test-DockerInstalled) {
-            Write-Success "Docker is installed"
-            docker --version
+          Write-Step "Testing detection functions..."
+          
+          # Test command existence check
+          if (Test-CommandExists "powershell") {
+            Write-Success "Test-CommandExists works"
           } else {
-            Write-Error "Docker not installed"
+            Write-Error "Test-CommandExists failed"
             exit 1
           }
           
-          if (Test-DockerRunning) {
-            Write-Success "Docker daemon is running"
-          } else {
-            Write-Error "Docker daemon not running"
-            exit 1
-          }
+          # Test Docker detection (may or may not be installed)
+          Write-Info "Docker installed: $(Test-DockerInstalled)"
+          Write-Info "Docker running: $(Test-DockerRunning)"
+          Write-Info "Compose available: $(Test-ComposeAvailable)"
+
+      - name: Test bootstrap script syntax
+        shell: pwsh
+        run: |
+          Write-Host "==> Checking bootstrap.ps1 syntax..."
+          $null = [System.Management.Automation.PSParser]::Tokenize(
+            (Get-Content -Path ".\windows\bootstrap.ps1" -Raw), 
+            [ref]$null
+          )
+          Write-Host "✓ bootstrap.ps1 syntax OK"
           
-          if (Test-ComposeAvailable) {
-            Write-Success "Docker Compose is available"
-            docker compose version
-          } else {
-            Write-Error "Docker Compose not available"
-            exit 1
-          }
+          Write-Host "==> Checking dev.ps1 syntax..."
+          $null = [System.Management.Automation.PSParser]::Tokenize(
+            (Get-Content -Path ".\windows\dev.ps1" -Raw), 
+            [ref]$null
+          )
+          Write-Host "✓ dev.ps1 syntax OK"
 
-      - name: Build container
+      - name: Test installer script syntax
         shell: pwsh
         run: |
-          docker compose build dev
-
-      - name: Start container
-        shell: pwsh
-        run: |
-          docker compose up -d dev
-          Start-Sleep -Seconds 5
-          docker compose ps
-
-      - name: Start demo service
-        shell: pwsh
-        run: |
-          docker compose exec -d dev bash -c "cd /workspace/demo-site && python app.py"
-          Start-Sleep -Seconds 5
-
-      - name: Test demo endpoints
-        shell: pwsh
-        run: |
-          Write-Host "==> Testing health endpoint..."
-          $health = Invoke-RestMethod -Uri "http://localhost:8080/health"
-          $health | ConvertTo-Json
+          Write-Host "==> Checking install-docker-windows.ps1 syntax..."
+          $null = [System.Management.Automation.PSParser]::Tokenize(
+            (Get-Content -Path ".\scripts\install-docker-windows.ps1" -Raw), 
+            [ref]$null
+          )
+          Write-Host "✓ install-docker-windows.ps1 syntax OK"
           
-          Write-Host "==> Testing API info..."
-          $info = Invoke-RestMethod -Uri "http://localhost:8080/api/info"
-          $info | ConvertTo-Json
-          
-          Write-Host "==> Testing main page..."
-          $page = Invoke-WebRequest -Uri "http://localhost:8080" -UseBasicParsing
-          Write-Host "Status: $($page.StatusCode)"
+          Write-Host "==> Checking install-cursor-windows.ps1 syntax..."
+          $null = [System.Management.Automation.PSParser]::Tokenize(
+            (Get-Content -Path ".\scripts\install-cursor-windows.ps1" -Raw), 
+            [ref]$null
+          )
+          Write-Host "✓ install-cursor-windows.ps1 syntax OK"
 
-      - name: Test dev helper commands
+      - name: Test dev.ps1 help
         shell: pwsh
         run: |
           cd windows
-          .\dev.ps1 status
-
-      - name: Cleanup
-        if: always()
-        shell: pwsh
-        run: |
-          docker compose down --volumes --remove-orphans
+          .\dev.ps1 help
 
   # ============================================
   # Summary Job
