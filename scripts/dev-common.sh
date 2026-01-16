@@ -28,7 +28,7 @@ show_dev_usage() {
     cat << EOF
 Workshop Bootstrap - Development Helper
 
-Usage: ./dev-${OS} <command>
+Usage: ./dev <command>
 
 Commands:
   up        Start development container
@@ -42,10 +42,10 @@ Commands:
   clean     Remove containers and images
 
 Examples:
-  ./dev-${OS} up              # Start container
-  ./dev-${OS} shell           # Open bash in container
-  ./dev-${OS} logs            # Follow container logs
-  ./dev-${OS} demo            # Restart demo service
+  ./dev up              # Start container
+  ./dev shell           # Open bash in container
+  ./dev logs            # Follow container logs
+  ./dev demo            # Restart demo service
 EOF
 }
 
@@ -109,7 +109,7 @@ cmd_demo() {
         log_success "Demo service is running at http://localhost:${PORT}"
     else
         log_warn "Demo service may still be starting..."
-        log_info "Check with: ./dev-${OS} logs"
+        log_info "Check with: ./dev logs"
     fi
 }
 

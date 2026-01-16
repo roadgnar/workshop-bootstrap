@@ -90,7 +90,7 @@ show_bootstrap_help() {
     cat << EOF
 Workshop Bootstrap - Developer Environment Setup
 
-Usage: ./bootstrap-${OS} [OPTIONS]
+Usage: ./bootstrap [OPTIONS]
 
 Options:
   --reinstall-docker   Force reinstall Docker even if present
@@ -101,9 +101,9 @@ Options:
   --help               Show this help message
 
 Examples:
-  ./bootstrap-${OS}                    # Standard setup
-  ./bootstrap-${OS} --port 3000        # Use port 3000 for demo
-  ./bootstrap-${OS} --no-open          # Skip opening Cursor
+  ./bootstrap                    # Standard setup
+  ./bootstrap --port 3000        # Use port 3000 for demo
+  ./bootstrap --no-open          # Skip opening Cursor
 EOF
 }
 
@@ -259,10 +259,10 @@ print_summary() {
     echo -e "    ${BOLD}API info:${NC}      http://localhost:${PORT}/api/info"
     echo ""
     echo -e "    ${BOLD}Useful commands:${NC}"
-    echo "      ./dev-${OS} up       - Start containers"
-    echo "      ./dev-${OS} down     - Stop containers"
-    echo "      ./dev-${OS} shell    - Open shell in container"
-    echo "      ./dev-${OS} logs     - View container logs"
+    echo "      ./dev up       - Start containers"
+    echo "      ./dev down     - Stop containers"
+    echo "      ./dev shell    - Open shell in container"
+    echo "      ./dev logs     - View container logs"
     echo ""
     print_separator
 }
