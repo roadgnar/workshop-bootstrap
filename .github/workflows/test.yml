@@ -105,7 +105,7 @@ jobs:
   # ============================================
   test-macos:
     name: 🍎 macOS
-    runs-on: macos-13  # Intel runner - more stable for Docker
+    runs-on: macos-15  
     
     steps:
       - name: Checkout
