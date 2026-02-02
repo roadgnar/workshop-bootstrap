@@ -25,6 +25,7 @@ jobs:
         run: |
           chmod +x linux/bootstrap linux/dev
           chmod +x scripts/*.sh
+          chmod +x repos/*/scripts/*.sh
 
       # ----------------------------------------
       # Test 1: Verify Docker is pre-installed
@@ -50,6 +51,51 @@ jobs:
           docker_installed && echo "✓ docker_installed() works" || exit 1
           docker_running && echo "✓ docker_running() works" || exit 1
           compose_available && echo "✓ compose_available() works" || exit 1
+
+      # ----------------------------------------
+      # Test 2.5: Port management functions
+      # ----------------------------------------
+      - name: "Test 2.5: Port management functions"
+        run: |
+          export OS="linux"
+          export SCRIPT_DIR="$(pwd)"
+          source scripts/utils.sh
+          
+          echo "==> Testing port management functions..."
+          
+          # Test port_in_use on a port that should be free
+          if port_in_use 59999; then
+            echo "✗ port_in_use returned true for unused port"
+            exit 1
+          fi
+          echo "✓ port_in_use() correctly detects free port"
+          
+          # Start a temporary server to test port detection
+          python3 -m http.server 59998 &
+          SERVER_PID=$!
+          sleep 1
+          
+          if port_in_use 59998; then
+            echo "✓ port_in_use() correctly detects used port"
+          else
+            echo "✗ port_in_use failed to detect used port"
+            kill $SERVER_PID 2>/dev/null || true
+            exit 1
+          fi
+          
+          # Test get_port_process
+          PID=$(get_port_process 59998)
+          if [[ -n "$PID" ]]; then
+            echo "✓ get_port_process() returns PID: $PID"
+          else
+            echo "✗ get_port_process() failed"
+            kill $SERVER_PID 2>/dev/null || true
+            exit 1
+          fi
+          
+          # Cleanup
+          kill $SERVER_PID 2>/dev/null || true
+          echo "✓ Port management functions work correctly"
 
       # ----------------------------------------
       # Test 3: Build container image
@@ -92,6 +138,10 @@ jobs:
           docker compose exec dev ls -la /workspace/
           docker compose exec dev cat /workspace/README.md | head -5
           
+          # Verify repos directory structure
+          docker compose exec dev ls -la /workspace/repos/
+          docker compose exec dev ls -la /workspace/repos/demo-site/
+          
           # Create a test file on host, verify it appears in container
           echo "test-from-host-$(date +%s)" > test-bind-mount.txt
           docker compose exec dev cat /workspace/test-bind-mount.txt
@@ -100,16 +150,25 @@ jobs:
           echo "✓ Bind mount working correctly"
 
       # ----------------------------------------
-      # Test 6: Start demo web service
+      # Test 6: Install demo-site dependencies
       # ----------------------------------------
-      - name: "Test 6: Start demo service inside container"
+      - name: "Test 6: Install demo-site dependencies"
         run: |
-          echo "==> Starting Flask demo service..."
-          docker compose exec -d dev bash -c "cd /workspace/demo-site && python app.py"
+          echo "==> Installing demo-site dependencies..."
+          docker compose exec dev bash -c "/workspace/scripts/start-repo.sh install demo-site"
+          echo "✓ Dependencies installed"
+
+      # ----------------------------------------
+      # Test 7: Start demo-site service
+      # ----------------------------------------
+      - name: "Test 7: Start demo-site service"
+        run: |
+          echo "==> Starting demo-site service..."
+          docker compose exec -d dev bash -c "/workspace/scripts/start-repo.sh demo-site start"
           
           echo "==> Waiting for service to be ready..."
           
-          # Wait for the service to respond (more reliable than checking process)
+          # Wait for the service to respond
           for i in {1..15}; do
             if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
               echo "✓ Demo service started and responding"
@@ -120,13 +179,14 @@ jobs:
           done
           
           echo "✗ Demo service not responding after 30 seconds"
+          docker compose exec dev cat /workspace/logs/demo-site.log || true
           docker compose logs dev
           exit 1
 
       # ----------------------------------------
-      # Test 7: Health endpoint from HOST
+      # Test 8: Health endpoint from HOST
       # ----------------------------------------
-      - name: "Test 7: Health check from HOST (outside container)"
+      - name: "Test 8: Health check from HOST (outside container)"
         run: |
           echo "==> Pinging health endpoint from HOST machine..."
           
@@ -147,9 +207,9 @@ jobs:
           echo "✓ Health endpoint responds correctly from host"
 
       # ----------------------------------------
-      # Test 8: Main page from HOST
+      # Test 9: Main page from HOST
       # ----------------------------------------
-      - name: "Test 8: Main page from HOST"
+      - name: "Test 9: Main page from HOST"
         run: |
           echo "==> Fetching main page from HOST..."
           
@@ -171,9 +231,9 @@ jobs:
           echo "✓ Main page content verified"
 
       # ----------------------------------------
-      # Test 9: API info endpoint from HOST
+      # Test 10: API info endpoint from HOST
       # ----------------------------------------
-      - name: "Test 9: API info endpoint from HOST"
+      - name: "Test 10: API info endpoint from HOST"
         run: |
           echo "==> Testing API info endpoint..."
           
@@ -188,19 +248,28 @@ jobs:
           echo "✓ API info endpoint works correctly"
 
       # ----------------------------------------
-      # Test 10: Dev helper commands
+      # Test 11: Dev helper commands
       # ----------------------------------------
-      - name: "Test 10: Dev helper commands"
+      - name: "Test 11: Dev helper commands"
         run: |
           cd linux
           
           echo "==> Testing ./dev status..."
           ./dev status
           
-          echo "==> Testing ./dev logs (brief)..."
-          timeout 3 ./dev logs || true
+          echo "==> Testing ./dev list..."
+          ./dev list
           
           echo "✓ Dev helper commands work"
+
+      # ----------------------------------------
+      # Test 12: Stop demo-site service
+      # ----------------------------------------
+      - name: "Test 12: Stop demo-site service"
+        run: |
+          echo "==> Stopping demo-site service..."
+          docker compose exec dev bash -c "/workspace/scripts/start-repo.sh demo-site stop"
+          echo "✓ Service stopped"
 
       # ----------------------------------------
       # Cleanup
@@ -230,6 +299,7 @@ jobs:
         run: |
           chmod +x mac/bootstrap mac/dev
           chmod +x scripts/*.sh
+          chmod +x repos/*/scripts/*.sh
 
       # ----------------------------------------
       # Script Tests
@@ -261,12 +331,47 @@ jobs:
           # Test command_exists
           command_exists bash && echo "✓ command_exists works" || exit 1
 
+      - name: "Test 2.5: Port management functions"
+        run: |
+          export OS="macos"
+          export SCRIPT_DIR="$(pwd)"
+          source scripts/utils.sh
+          
+          echo "==> Testing port management functions..."
+          
+          # Test port_in_use on a port that should be free
+          if port_in_use 59999; then
+            echo "✗ port_in_use returned true for unused port"
+            exit 1
+          fi
+          echo "✓ port_in_use() correctly detects free port"
+          
+          # Start a temporary server to test port detection
+          python3 -m http.server 59998 &
+          SERVER_PID=$!
+          sleep 2
+          
+          if port_in_use 59998; then
+            echo "✓ port_in_use() correctly detects used port"
+          else
+            echo "✗ port_in_use failed to detect used port"
+            kill $SERVER_PID 2>/dev/null || true
+            exit 1
+          fi
+          
+          # Cleanup
+          kill $SERVER_PID 2>/dev/null || true
+          echo "✓ Port management functions work correctly"
+
       - name: "Test 3: Script syntax validation"
         run: |
           echo "==> Checking all bash scripts..."
           bash -n mac/bootstrap && echo "✓ mac/bootstrap"
           bash -n mac/dev && echo "✓ mac/dev"
           for f in scripts/*.sh; do
+            bash -n "$f" && echo "✓ $f"
+          done
+          for f in repos/*/scripts/*.sh; do
             bash -n "$f" && echo "✓ $f"
           done
 
@@ -282,7 +387,6 @@ jobs:
           docker --version
           
           echo "==> Verifying docker-compose installed..."
-          # Homebrew installs standalone docker-compose (with hyphen)
           docker-compose --version
           
           echo "✓ Docker CLI and docker-compose installed successfully"
@@ -351,7 +455,8 @@ jobs:
         run: |
           cd mac
           ./dev help
-          echo "✓ Dev help command works"
+          ./dev list
+          echo "✓ Dev helper commands work"
 
   # ============================================
   # Windows Testing
@@ -397,6 +502,44 @@ jobs:
             Write-Host "✗ Test-CommandExists failed"
             exit 1
           }
+
+      - name: "Test 2.5: Port management functions"
+        shell: pwsh
+        run: |
+          . .\scripts\utils.ps1
+          
+          Write-Host "==> Testing port management functions..."
+          
+          # Test Test-PortInUse on a port that should be free
+          if (Test-PortInUse -Port 59999) {
+            Write-Host "✗ Test-PortInUse returned true for unused port"
+            exit 1
+          }
+          Write-Host "✓ Test-PortInUse correctly detects free port"
+          
+          # Start a temporary listener to test port detection
+          $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, 59998)
+          $listener.Start()
+          
+          if (Test-PortInUse -Port 59998) {
+            Write-Host "✓ Test-PortInUse correctly detects used port"
+          } else {
+            Write-Host "✗ Test-PortInUse failed to detect used port"
+            $listener.Stop()
+            exit 1
+          }
+          
+          # Test Get-PortProcess
+          $process = Get-PortProcess -Port 59998
+          if ($process) {
+            Write-Host "✓ Get-PortProcess returns process: $($process.ProcessName)"
+          } else {
+            Write-Host "⚠ Get-PortProcess returned null (may need elevated privileges)"
+          }
+          
+          # Cleanup
+          $listener.Stop()
+          Write-Host "✓ Port management functions work correctly"
 
       - name: "Test 3: Script syntax validation"
         shell: pwsh
@@ -509,7 +652,8 @@ jobs:
         run: |
           cd windows
           .\dev.ps1 help
-          Write-Host "✓ Dev help command works"
+          .\dev.ps1 list
+          Write-Host "✓ Dev helper commands work"
 
   # ============================================
   # Summary Job
@@ -536,4 +680,3 @@ jobs:
             exit 1
           fi
           echo "✅ All platform tests passed!"
-

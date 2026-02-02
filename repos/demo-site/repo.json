@@ -1,0 +1,12 @@
+{
+  "name": "demo-site",
+  "description": "Demo Flask web application",
+  "stack": "python",
+  "ports": [8080],
+  "healthcheck": "http://localhost:8080/health",
+  "urls": {
+    "Website": "http://localhost:8080",
+    "Health Check": "http://localhost:8080/health",
+    "API Info": "http://localhost:8080/api/info"
+  }
+}

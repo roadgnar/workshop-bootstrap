@@ -1,0 +1,45 @@
+version: "3"
+
+vars:
+  root_dir:
+    sh: echo $PWD
+  github_repo_slug: "roadgnar/spatial"
+  main_package_name: "cyvl-spatial"
+
+# Used for local development. Set using `task env:refresh`
+dotenv:
+  - .env.aws
+  - .env.code
+
+includes:
+
+  env:
+    taskfile: taskfiles/env.yaml
+
+  py:
+    taskfile: taskfiles/python-checks.yaml
+
+tasks:
+  install:
+    silent: true
+    desc: "Install dependencies and set up the project"
+    cmds:
+      - |
+        # Skip env:refresh if SKIP_ENV_REFRESH is set (prevents infinite loop on re-invoke)
+        if [ -z "${SKIP_ENV_REFRESH:-}" ]; then
+          task env:refresh
+          # Re-invoke task to load new dotenv files
+          SKIP_ENV_REFRESH=1 task install
+          exit 0
+        fi
+      - npm install
+      - task py:install
+
+  frontend:dev:
+    desc: "Start frontend development server"
+    cmd: npm run dev
+
+  api:dev:
+    desc: "Start backend API development server"
+    dir: api
+    cmd: uv run uvicorn geolocation_api.app:app --reload --host 0.0.0.0 --port 8000

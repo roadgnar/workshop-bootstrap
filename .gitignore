@@ -45,6 +45,7 @@ logs/
 .env
 .env.local
 .env.*.local
+.selected-repo
 
 # Temporary files
 tmp/
@@ -56,4 +57,5 @@ temp/
 dist/
 build/
 *.egg-info/
+**/node_modules/*
 

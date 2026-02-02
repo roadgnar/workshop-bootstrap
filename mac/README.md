@@ -12,35 +12,43 @@ cd mac
 This will:
 1. ✅ Install Docker Desktop (via Homebrew)
 2. ✅ Install Cursor IDE (via Homebrew)
-3. ✅ Build and start the dev container
-4. ✅ Launch demo website at http://localhost:8080
-5. ✅ Open Cursor to the project
+3. ✅ Prompt you to select a repository
+4. ✅ Check required ports (optionally free blocked ports)
+5. ✅ Build and start the dev container
+6. ✅ Launch your selected application
+7. ✅ Open Cursor to the repo's code folder
 
 ## Commands
 
 ### Bootstrap Options
 
 ```bash
-./bootstrap                    # Standard setup
-./bootstrap --port 3000        # Use different port
-./bootstrap --no-open          # Don't open Cursor
-./bootstrap --reinstall-docker # Force reinstall Docker
-./bootstrap --reinstall-cursor # Force reinstall Cursor
-./bootstrap --timeout 180      # Longer Docker startup timeout
+./bootstrap                      # Interactive repo selection
+./bootstrap --repo demo-site     # Run demo-site directly
+./bootstrap --repo cyvl-geoguesser  # Run CYVL GeoGuesser
+./bootstrap --force-ports        # Auto-kill processes using required ports
+./bootstrap --no-open            # Don't open Cursor
+./bootstrap --reinstall-docker   # Force reinstall Docker
+./bootstrap --reinstall-cursor   # Force reinstall Cursor
+./bootstrap --timeout 180        # Longer startup timeout (default: 120s)
 ```
 
 ### Development Helper
 
 ```bash
-./dev up        # Start containers
-./dev down      # Stop containers
-./dev shell     # Open shell in container
-./dev logs      # View container logs
-./dev restart   # Restart containers
-./dev demo      # Start/restart demo service
-./dev build     # Rebuild container image
-./dev status    # Show container status
-./dev clean     # Remove containers and images
+./dev up            # Start containers
+./dev down          # Stop containers
+./dev shell         # Open shell in container
+./dev start [repo]  # Start repo services
+./dev stop [repo]   # Stop repo services
+./dev restart [repo] # Restart repo services
+./dev logs [repo]   # View service logs
+./dev status        # Show container and service status
+./dev install [repo] # Install repo dependencies
+./dev select        # Select/change active repository
+./dev list          # List available repositories
+./dev build         # Rebuild container image
+./dev clean         # Remove containers and images
 ```
 
 ## Requirements
@@ -62,10 +70,17 @@ Docker Desktop requires manual first-run setup:
 
 ### Port Already in Use
 
+Use the `--force-ports` flag to auto-kill blocking processes:
+
 ```bash
-./bootstrap --port 3000
-# or
-PORT=3000 ./dev up
+./bootstrap --force-ports
+```
+
+Or check what's using the port:
+
+```bash
+lsof -i :8080
+# Then kill the process or use a different port
 ```
 
 ### Homebrew Not Found
@@ -76,4 +91,3 @@ Install Homebrew first:
 ```
 
 Then re-run `./bootstrap`.
-

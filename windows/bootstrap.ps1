@@ -3,16 +3,19 @@
     bootstrap.ps1 - Windows bootstrap script
 
 .DESCRIPTION
-    Installs Docker Desktop, Cursor IDE, and launches a containerized demo web application.
+    Installs Docker Desktop, Cursor IDE, and launches a containerized application.
+
+.PARAMETER Repo
+    Repository to run (skips interactive selection)
+
+.PARAMETER ForcePorts
+    Auto-kill processes using required ports (no prompt)
 
 .PARAMETER ReinstallDocker
     Force reinstall Docker even if present
 
 .PARAMETER ReinstallCursor
     Force reinstall Cursor even if present
-
-.PARAMETER Port
-    Port for demo website (default: 8080)
 
 .PARAMETER NoOpen
     Don't open Cursor after setup
@@ -22,18 +25,19 @@
 
 .EXAMPLE
     .\bootstrap.ps1
-    Standard setup with defaults
+    Interactive repo selection
 
 .EXAMPLE
-    .\bootstrap.ps1 -Port 3000
-    Use port 3000 for demo website
+    .\bootstrap.ps1 -Repo demo-site
+    Run demo-site directly
 #>
 
 [CmdletBinding()]
 param(
+    [string]$Repo,
+    [switch]$ForcePorts,
     [switch]$ReinstallDocker,
     [switch]$ReinstallCursor,
-    [int]$Port = 8080,
     [switch]$NoOpen,
     [int]$TimeoutSec = 120
 )
@@ -50,18 +54,113 @@ Set-Location $ScriptDir
 . "$ScriptDir\scripts\install-docker-windows.ps1"
 . "$ScriptDir\scripts\install-cursor-windows.ps1"
 
+$SelectedRepoFile = "$ScriptDir\.selected-repo"
+
+function Get-AvailableRepos {
+    $repos = @()
+    Get-ChildItem -Path "$ScriptDir\repos" -Directory | ForEach-Object {
+        $repoJson = Join-Path $_.FullName "repo.json"
+        if (Test-Path $repoJson) {
+            $repos += $_.Name
+        }
+    }
+    return $repos
+}
+
+function Select-RepoInteractive {
+    $repos = Get-AvailableRepos
+    
+    if ($repos.Count -eq 0) {
+        Write-ErrorMsg "No repositories found in repos/"
+        exit 1
+    }
+    
+    Write-Separator
+    Write-Host ""
+    Write-Host "Select a repository to run:" -ForegroundColor White -NoNewline
+    Write-Host ""
+    Write-Host ""
+    
+    for ($i = 0; $i -lt $repos.Count; $i++) {
+        $repoPath = Join-Path "$ScriptDir\repos" $repos[$i]
+        $repoJson = Join-Path $repoPath "repo.json"
+        $desc = "No description"
+        
+        try {
+            $json = Get-Content $repoJson -Raw | ConvertFrom-Json
+            $desc = $json.description
+        } catch {}
+        
+        Write-Host "  $($i + 1)) " -NoNewline -ForegroundColor White
+        Write-Host $repos[$i] -ForegroundColor Green
+        Write-Host "     $desc" -ForegroundColor Gray
+        Write-Host ""
+    }
+    
+    Write-Separator
+    
+    while ($true) {
+        $selection = Read-Host "Enter selection (1-$($repos.Count))"
+        
+        if ($selection -match '^\d+$') {
+            $num = [int]$selection
+            if ($num -ge 1 -and $num -le $repos.Count) {
+                $script:Repo = $repos[$num - 1]
+                $script:Repo | Out-File -FilePath $SelectedRepoFile -NoNewline
+                Write-Host ""
+                Write-Success "Selected: $($script:Repo)"
+                return
+            }
+        }
+        
+        Write-ErrorMsg "Invalid selection. Please enter a number between 1 and $($repos.Count)"
+    }
+}
+
+function Test-SelectedRepo {
+    $repoPath = Join-Path "$ScriptDir\repos" $Repo
+    
+    if (-not (Test-Path $repoPath)) {
+        Write-ErrorMsg "Repository not found: $Repo"
+        Write-Host ""
+        Write-Host "Available repositories:"
+        Get-AvailableRepos | ForEach-Object { Write-Host "  - $_" }
+        exit 1
+    }
+    
+    $repoJson = Join-Path $repoPath "repo.json"
+    if (-not (Test-Path $repoJson)) {
+        Write-ErrorMsg "No repo.json found in: $Repo"
+        exit 1
+    }
+    
+    $startScript = Join-Path $repoPath "scripts\start.sh"
+    if (-not (Test-Path $startScript)) {
+        Write-ErrorMsg "No scripts/start.sh found in: $Repo"
+        exit 1
+    }
+}
+
 function Main {
     Write-Banner
     
     Write-Info "Operating system: Windows"
-    Write-Info "Demo port: $Port"
     Write-Info "Startup timeout: ${TimeoutSec}s"
+    
+    # Select repo if not specified
+    if ([string]::IsNullOrEmpty($Repo)) {
+        Select-RepoInteractive
+    } else {
+        Test-SelectedRepo
+        Write-Info "Selected repository: $Repo"
+    }
     
     Setup-Docker
     Ensure-DockerRunning
     Setup-Cursor
+    Check-RequiredPorts
     Setup-Containers
-    Start-Demo
+    Start-RepoServices
     
     if (-not $NoOpen) {
         Open-Editor
@@ -143,12 +242,44 @@ function Setup-Cursor {
     }
 }
 
+function Check-RequiredPorts {
+    Write-Step "Checking required ports..."
+    
+    # Default ports
+    $ports = @(8080, 5173, 8000, 3000)
+    
+    # Try to get ports from repo.json
+    if ($Repo) {
+        $repoPath = Join-Path "$ScriptDir\repos" $Repo
+        $repoJson = Join-Path $repoPath "repo.json"
+        
+        if (Test-Path $repoJson) {
+            try {
+                $json = Get-Content $repoJson -Raw | ConvertFrom-Json
+                if ($json.ports) {
+                    $ports = $json.ports
+                }
+            } catch {}
+        }
+    }
+    
+    Write-Info "Checking ports: $($ports -join ', ')"
+    
+    $result = Test-AndFreePorts -Ports $ports -Force:$ForcePorts
+    
+    if (-not $result) {
+        exit 1
+    }
+    
+    Write-Success "All required ports are available"
+}
+
 function Setup-Containers {
     Write-Step "Setting up Docker containers..."
     
-    $env:PORT = $Port
     $env:BUILD_TIME = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     $env:VERSION = "1.0.0"
+    $env:SELECTED_REPO = $Repo
     
     Write-Info "Building development container..."
     docker compose build dev
@@ -167,66 +298,112 @@ function Setup-Containers {
     Write-Success "Container is running"
 }
 
-function Start-Demo {
-    Write-Step "Starting demo web service..."
+function Start-RepoServices {
+    $repoPath = Join-Path "$ScriptDir\repos" $Repo
+    $repoJson = Join-Path $repoPath "repo.json"
     
-    docker compose exec -d dev bash -c "cd /workspace/demo-site && python app.py"
+    Write-Step "Starting $Repo services..."
     
-    Write-Info "Waiting for demo service to be ready..."
-    $elapsed = 0
-    $maxWait = 30
+    # Install dependencies
+    Write-Info "Installing dependencies..."
+    docker compose exec dev bash -c "/workspace/scripts/start-repo.sh install $Repo" 2>$null
     
-    while ($elapsed -lt $maxWait) {
-        try {
-            $response = Invoke-WebRequest -Uri "http://localhost:$Port/health" -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
-            if ($response.StatusCode -eq 200) {
-                Write-Host ""
-                Write-Success "Demo service is running"
-                return
-            }
-        }
-        catch {}
-        
-        Start-Sleep -Seconds 1
-        $elapsed++
-        Write-Host "." -NoNewline
+    # Start services
+    Write-Info "Starting services..."
+    docker compose exec -d dev bash -c "/workspace/scripts/start-repo.sh $Repo start"
+    
+    # Wait for health check
+    try {
+        $json = Get-Content $repoJson -Raw | ConvertFrom-Json
+        $healthcheck = $json.healthcheck
+    } catch {
+        $healthcheck = $null
     }
     
-    Write-Host ""
-    Write-Warn "Demo service took longer than expected to start"
+    if ($healthcheck) {
+        Write-Info "Waiting for services to be ready..."
+        $elapsed = 0
+        $maxWait = 60
+        
+        while ($elapsed -lt $maxWait) {
+            try {
+                $response = Invoke-WebRequest -Uri $healthcheck -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+                if ($response.StatusCode -eq 200) {
+                    Write-Host ""
+                    Write-Success "Services are running"
+                    return
+                }
+            }
+            catch {}
+            
+            Start-Sleep -Seconds 2
+            $elapsed += 2
+            Write-Host "." -NoNewline
+        }
+        
+        Write-Host ""
+        Write-Warn "Services took longer than expected to start"
+        Write-Info "Check logs with: .\dev.ps1 logs"
+    } else {
+        Start-Sleep -Seconds 3
+        Write-Success "Services started"
+    }
 }
 
 function Open-Editor {
     Write-Step "Opening Cursor..."
     
-    $opened = Open-CursorWindows -Workspace $ScriptDir
+    # Open Cursor to the selected repo's code folder
+    $repoCodePath = Join-Path "$ScriptDir\repos\$Repo" "code"
+    
+    if (Test-Path $repoCodePath -PathType Container) {
+        $opened = Open-CursorWindows -Workspace $repoCodePath
+        $targetPath = $repoCodePath
+    } else {
+        # Fallback to root if code folder doesn't exist
+        $opened = Open-CursorWindows -Workspace $ScriptDir
+        $targetPath = $ScriptDir
+    }
     
     if (-not $opened) {
         Write-Warn "Could not open Cursor automatically"
-        Write-Info "Please open Cursor manually and open this folder: $ScriptDir"
+        Write-Info "Please open Cursor manually and open this folder: $targetPath"
     }
 }
 
 function Print-Summary {
+    $repoPath = Join-Path "$ScriptDir\repos" $Repo
+    $repoJson = Join-Path $repoPath "repo.json"
+    
     Write-Separator
     Write-Host ""
     Write-Success "Bootstrap complete!"
     Write-Host ""
-    Write-Host "    Demo website:  " -NoNewline
-    Write-Host "http://localhost:$Port" -ForegroundColor Cyan
-    Write-Host "    Health check:  " -NoNewline
-    Write-Host "http://localhost:$Port/health" -ForegroundColor Cyan
-    Write-Host "    API info:      " -NoNewline
-    Write-Host "http://localhost:$Port/api/info" -ForegroundColor Cyan
+    Write-Host "    Repository: " -NoNewline
+    Write-Host $Repo -ForegroundColor Cyan
+    Write-Host "    Code folder: " -NoNewline
+    Write-Host "repos\$Repo\code" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "    URLs:" -ForegroundColor White
+    
+    try {
+        $json = Get-Content $repoJson -Raw | ConvertFrom-Json
+        $json.urls.PSObject.Properties | ForEach-Object {
+            Write-Host "      $($_.Name): " -NoNewline
+            Write-Host $_.Value -ForegroundColor Cyan
+        }
+    } catch {}
+    
     Write-Host ""
     Write-Host "    Useful commands (run from windows/ folder):" -ForegroundColor White
-    Write-Host "      .\dev.ps1 up       - Start containers"
+    Write-Host "      .\dev.ps1 up       - Start container"
     Write-Host "      .\dev.ps1 down     - Stop containers"
     Write-Host "      .\dev.ps1 shell    - Open shell in container"
-    Write-Host "      .\dev.ps1 logs     - View container logs"
+    Write-Host "      .\dev.ps1 start    - Start repo services"
+    Write-Host "      .\dev.ps1 logs     - View service logs"
+    Write-Host "      .\dev.ps1 status   - Show status"
     Write-Host ""
     Write-Separator
 }
 
 Main
-

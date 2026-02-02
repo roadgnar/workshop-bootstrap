@@ -12,35 +12,43 @@ cd windows
 This will:
 1. ✅ Install Docker Desktop (via WinGet)
 2. ✅ Install Cursor IDE (via WinGet)
-3. ✅ Build and start the dev container
-4. ✅ Launch demo website at http://localhost:8080
-5. ✅ Open Cursor to the project
+3. ✅ Prompt you to select a repository
+4. ✅ Check required ports (optionally free blocked ports)
+5. ✅ Build and start the dev container
+6. ✅ Launch your selected application
+7. ✅ Open Cursor to the repo's code folder
 
 ## Commands
 
 ### Bootstrap Options
 
 ```powershell
-.\bootstrap.ps1                    # Standard setup
-.\bootstrap.ps1 -Port 3000         # Use different port
-.\bootstrap.ps1 -NoOpen            # Don't open Cursor
-.\bootstrap.ps1 -ReinstallDocker   # Force reinstall Docker
-.\bootstrap.ps1 -ReinstallCursor   # Force reinstall Cursor
-.\bootstrap.ps1 -TimeoutSec 180    # Longer Docker startup timeout
+.\bootstrap.ps1                      # Interactive repo selection
+.\bootstrap.ps1 -Repo demo-site      # Run demo-site directly
+.\bootstrap.ps1 -Repo cyvl-geoguesser  # Run CYVL GeoGuesser
+.\bootstrap.ps1 -ForcePorts          # Auto-kill processes using required ports
+.\bootstrap.ps1 -NoOpen              # Don't open Cursor
+.\bootstrap.ps1 -ReinstallDocker     # Force reinstall Docker
+.\bootstrap.ps1 -ReinstallCursor     # Force reinstall Cursor
+.\bootstrap.ps1 -TimeoutSec 180      # Longer startup timeout (default: 120s)
 ```
 
 ### Development Helper
 
 ```powershell
-.\dev.ps1 up        # Start containers
-.\dev.ps1 down      # Stop containers
-.\dev.ps1 shell     # Open shell in container
-.\dev.ps1 logs      # View container logs
-.\dev.ps1 restart   # Restart containers
-.\dev.ps1 demo      # Start/restart demo service
-.\dev.ps1 build     # Rebuild container image
-.\dev.ps1 status    # Show container status
-.\dev.ps1 clean     # Remove containers and images
+.\dev.ps1 up            # Start containers
+.\dev.ps1 down          # Stop containers
+.\dev.ps1 shell         # Open shell in container
+.\dev.ps1 start [repo]  # Start repo services
+.\dev.ps1 stop [repo]   # Stop repo services
+.\dev.ps1 restart [repo] # Restart repo services
+.\dev.ps1 logs [repo]   # View service logs
+.\dev.ps1 status        # Show container and service status
+.\dev.ps1 install [repo] # Install repo dependencies
+.\dev.ps1 select        # Select/change active repository
+.\dev.ps1 list          # List available repositories
+.\dev.ps1 build         # Rebuild container image
+.\dev.ps1 clean         # Remove containers and images
 ```
 
 ## Requirements
@@ -77,8 +85,18 @@ Install WinGet (App Installer) from the Microsoft Store, or the bootstrap will a
 
 ### Port Already in Use
 
+Use the `-ForcePorts` flag to auto-kill blocking processes:
+
 ```powershell
-.\bootstrap.ps1 -Port 3000
+.\bootstrap.ps1 -ForcePorts
+```
+
+Or check what's using the port:
+
+```powershell
+netstat -ano | findstr :8080
+# Note the PID, then:
+taskkill /PID <pid> /F
 ```
 
 ### Execution Policy Error
@@ -108,4 +126,3 @@ wsl --set-default-version 2
 2. Check Docker Desktop settings → Resources → WSL Integration
 3. Try restarting Docker Desktop
 4. Check Windows Event Viewer for errors
-

@@ -163,3 +163,119 @@ function Invoke-AsAdmin {
     Start-Process powershell -Verb RunAs -ArgumentList "-Command", $Command -Wait
 }
 
+# =============================================================================
+# Port Management Functions
+# =============================================================================
+
+# Get process using a specific port
+function Get-PortProcess {
+    param([int]$Port)
+    
+    try {
+        $connection = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+        if ($connection) {
+            return Get-Process -Id $connection.OwningProcess -ErrorAction SilentlyContinue
+        }
+    }
+    catch {}
+    
+    return $null
+}
+
+# Check if a port is in use
+function Test-PortInUse {
+    param([int]$Port)
+    
+    return $null -ne (Get-PortProcess -Port $Port)
+}
+
+# Kill process using a port
+function Stop-PortProcess {
+    param([int]$Port)
+    
+    $process = Get-PortProcess -Port $Port
+    if ($process) {
+        try {
+            Stop-Process -Id $process.Id -Force -ErrorAction Stop
+            Start-Sleep -Seconds 1
+            return $true
+        }
+        catch {
+            Write-Warn "Could not stop process $($process.Id): $_"
+            return $false
+        }
+    }
+    return $false
+}
+
+# Check ports and optionally free them
+function Test-AndFreePorts {
+    param(
+        [int[]]$Ports,
+        [switch]$Force
+    )
+    
+    $blockedPorts = @()
+    $portInfo = @()
+    
+    # Check which ports are in use
+    foreach ($port in $Ports) {
+        $process = Get-PortProcess -Port $port
+        if ($process) {
+            $blockedPorts += $port
+            $portInfo += @{
+                Port = $port
+                PID = $process.Id
+                Name = $process.ProcessName
+            }
+        }
+    }
+    
+    # If no ports blocked, we're good
+    if ($blockedPorts.Count -eq 0) {
+        return $true
+    }
+    
+    Write-Warn "The following ports are already in use:"
+    foreach ($info in $portInfo) {
+        Write-Info "  - Port $($info.Port) (PID: $($info.PID), Process: $($info.Name))"
+    }
+    Write-Host ""
+    
+    # If force flag is set, kill without asking
+    if ($Force) {
+        Write-Info "Stopping processes on blocked ports (-ForcePorts specified)..."
+        foreach ($port in $blockedPorts) {
+            if (Stop-PortProcess -Port $port) {
+                Write-Success "Freed port $port"
+            }
+            else {
+                Write-ErrorMsg "Failed to free port $port"
+                return $false
+            }
+        }
+        return $true
+    }
+    
+    # Ask user for confirmation
+    $response = Read-Host "    ? Stop these processes to continue? [y/N]"
+    
+    if ($response -match '^[Yy]$') {
+        foreach ($port in $blockedPorts) {
+            if (Stop-PortProcess -Port $port) {
+                Write-Success "Freed port $port"
+            }
+            else {
+                Write-ErrorMsg "Failed to free port $port"
+                return $false
+            }
+        }
+        return $true
+    }
+    else {
+        Write-ErrorMsg "Cannot continue with ports in use"
+        Write-Info "Use -ForcePorts to automatically stop conflicting processes"
+        return $false
+    }
+}
+

@@ -1,0 +1,12 @@
+{
+  "name": "cyvl-geoguesser",
+  "description": "CYVL GeoGuesser - 360° imagery guessing game",
+  "stack": "node+python",
+  "ports": [5173, 8000],
+  "healthcheck": "http://localhost:5173",
+  "urls": {
+    "GeoGuesser": "http://localhost:5173",
+    "Backend API": "http://localhost:8000",
+    "API Docs": "http://localhost:8000/docs"
+  }
+}

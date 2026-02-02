@@ -1,6 +1,6 @@
 # Workshop Bootstrap
 
-A cross-platform "clone-and-run" developer environment that automatically sets up **Docker**, **Cursor IDE**, and a **containerized demo web application**.
+A cross-platform "clone-and-run" developer environment that automatically sets up **Docker**, **Cursor IDE**, and runs your selected application in a container.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -54,19 +54,20 @@ The bootstrap script will:
 
 1. ✅ **Install Docker** (Desktop on Mac/Windows, Engine on Linux)
 2. ✅ **Install Cursor IDE** (via Homebrew/WinGet/AppImage)
-3. ✅ **Build and start** the dev container
-4. ✅ **Launch demo website** at http://localhost:8080
-5. ✅ **Open Cursor** to the project
+3. ✅ **Prompt you to select a repository** to run
+4. ✅ **Check required ports** (optionally kill blocking processes)
+5. ✅ **Build and start** the development container
+6. ✅ **Install dependencies** and launch your application
+7. ✅ **Open Cursor** directly to the repo's code folder
 
 ---
 
-## After Setup
+## Available Repositories
 
-| Resource | URL |
-|----------|-----|
-| Demo Website | http://localhost:8080 |
-| Health Check | http://localhost:8080/health |
-| API Info | http://localhost:8080/api/info |
+| Repository | Description |
+|------------|-------------|
+| `demo-site` | Demo Flask web application |
+| `cyvl-geoguesser` | CYVL GeoGuesser - 360° imagery guessing game |
 
 ---
 
@@ -90,23 +91,31 @@ workshop-bootstrap/
 │   ├── dev.ps1                #    Development helper
 │   └── README.md              #    Windows-specific docs
 │
+├── repos/                     # Application repositories
+│   ├── demo-site/             #    Demo Flask application
+│   │   ├── code/              #    Application source code
+│   │   ├── scripts/           #    Repo-specific scripts
+│   │   │   └── start.sh       #    Service startup script
+│   │   └── repo.json          #    Repository metadata
+│   │
+│   └── cyvl-geoguesser/       #    CYVL GeoGuesser
+│       ├── code/              #    Frontend + Backend code
+│       ├── scripts/           #    Repo-specific scripts
+│       │   └── start.sh       #    Service startup script
+│       └── repo.json          #    Repository metadata
+│
 ├── scripts/                   # Shared logic (don't run directly)
 │   ├── bootstrap-common.sh    #    Shared bootstrap logic
 │   ├── dev-common.sh          #    Shared dev helper logic
+│   ├── start-repo.sh          #    Generic repo service manager
 │   ├── utils.sh / utils.ps1   #    Utility functions
 │   ├── install-docker-*.sh    #    Docker installers
 │   └── install-cursor-*.sh    #    Cursor installers
 │
-├── demo-site/                 # Demo web application
-│   ├── app.py                 #    Flask app
-│   ├── requirements.txt
-│   └── templates/
-│       └── index.html
-│
-├── Dockerfile
-├── docker-compose.yml
-├── .devcontainer/             # Optional: VS Code/Cursor devcontainer
-└── README.md                  # This file
+├── Dockerfile                 #    Repo-agnostic container
+├── docker-compose.yml         #    Container orchestration
+├── .devcontainer/             #    VS Code/Cursor devcontainer
+└── README.md                  #    This file
 ```
 
 ---
@@ -117,14 +126,18 @@ Each OS folder has a `dev` script with the same commands:
 
 | Command | Description |
 |---------|-------------|
-| `up` | Start containers |
-| `down` | Stop containers |
+| `up` | Start development container |
+| `down` | Stop all containers |
 | `shell` | Open shell in container |
-| `logs` | View container logs |
-| `restart` | Restart containers |
-| `demo` | Start/restart demo service |
+| `start [repo]` | Start repo services |
+| `stop [repo]` | Stop repo services |
+| `restart [repo]` | Restart repo services |
+| `logs [repo]` | View service logs |
+| `status` | Show container and service status |
+| `install [repo]` | Install repo dependencies |
+| `select` | Select/change active repository |
+| `list` | List available repositories |
 | `build` | Rebuild container image |
-| `status` | Show container status |
 | `clean` | Remove containers and images |
 
 **Examples:**
@@ -132,46 +145,75 @@ Each OS folder has a `dev` script with the same commands:
 ```bash
 # macOS
 cd mac && ./dev up
+./dev start demo-site
+./dev logs
 
 # Linux
-cd linux && ./dev shell
+cd linux && ./dev select    # Choose a repo interactively
+./dev start                 # Start selected repo
 
-# Windows
-cd windows; .\dev.ps1 logs
+# Check status
+./dev status
 ```
 
 ---
 
-## Development Workflows
+## Bootstrap Options
 
-### Mode A: Host Editing (Default)
-
-Edit files on your host machine with Cursor. Changes sync to the container via bind mount.
-
+```bash
+./bootstrap                          # Interactive repo selection
+./bootstrap --repo demo-site         # Run demo-site directly
+./bootstrap --repo cyvl-geoguesser   # Run CYVL GeoGuesser directly
+./bootstrap --force-ports            # Auto-kill processes using required ports
+./bootstrap --no-open                # Skip opening Cursor
+./bootstrap --reinstall-docker       # Force reinstall Docker
+./bootstrap --reinstall-cursor       # Force reinstall Cursor
+./bootstrap --timeout 180            # Set startup timeout (default: 120s)
 ```
-┌─────────────┐      bind mount      ┌──────────────────┐
-│   Cursor    │ ◄──────────────────► │  Dev Container   │
-│  (on host)  │      /workspace      │  (runs code)     │
-└─────────────┘                      └──────────────────┘
-```
 
-### Mode B: Dev Container
+**Windows equivalent flags:** `-Repo`, `-ForcePorts`, `-NoOpen`, `-ReinstallDocker`, `-ReinstallCursor`, `-TimeoutSec`
 
-Attach Cursor directly to the container:
+---
 
-1. Open Cursor
-2. Install "Dev Containers" extension
-3. `Cmd/Ctrl + Shift + P` → "Dev Containers: Reopen in Container"
+## Adding a New Repository
+
+To add a new repository:
+
+1. Create a folder under `repos/` with your repo name
+2. Add the following structure:
+   ```
+   repos/your-repo/
+   ├── code/           # Your application source code
+   ├── scripts/
+   │   └── start.sh    # Service startup script
+   └── repo.json       # Repository metadata
+   ```
+
+3. Create `repo.json`:
+   ```json
+   {
+     "name": "your-repo",
+     "description": "Your application description",
+     "stack": "python",
+     "ports": [8080],
+     "healthcheck": "http://localhost:8080/health",
+     "urls": {
+       "Website": "http://localhost:8080"
+     }
+   }
+   ```
+
+4. Create `scripts/start.sh` to manage your services (see existing repos for examples)
 
 ---
 
 ## Technical Details
 
-- **Container Base**: Python 3.12-slim
-- **Web Framework**: Flask 3.0
-- **Production Server**: Gunicorn
-- **Default Port**: 8080
+- **Container Base**: Python 3.12-slim + Node.js 22 + npm 11
+- **Python Package Manager**: uv (for workspaces) / pip (for requirements.txt)
 - **Workspace Mount**: `/workspace`
+- **Repos Location**: `/workspace/repos/`
+- **Hot Reload**: Enabled for both Flask (debug mode) and Vite (HMR)
 
 ---
 

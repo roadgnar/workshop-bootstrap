@@ -43,11 +43,15 @@ case "$OS" in
 esac
 
 # Default configuration
-PORT="${PORT:-8080}"
 TIMEOUT="${TIMEOUT:-120}"
 REINSTALL_DOCKER=false
 REINSTALL_CURSOR=false
 NO_OPEN=false
+FORCE_PORTS=false
+SELECTED_REPO=""
+
+# Default ports to check
+DEFAULT_PORTS="8080 5173 8000 3000"
 
 # Parse command line arguments
 parse_bootstrap_args() {
@@ -61,8 +65,8 @@ parse_bootstrap_args() {
                 REINSTALL_CURSOR=true
                 shift
                 ;;
-            --port)
-                PORT="$2"
+            --repo)
+                SELECTED_REPO="$2"
                 shift 2
                 ;;
             --no-open)
@@ -72,6 +76,10 @@ parse_bootstrap_args() {
             --timeout)
                 TIMEOUT="$2"
                 shift 2
+                ;;
+            --force-ports)
+                FORCE_PORTS=true
+                shift
                 ;;
             --help|-h)
                 show_bootstrap_help
@@ -93,18 +101,100 @@ Workshop Bootstrap - Developer Environment Setup
 Usage: ./bootstrap [OPTIONS]
 
 Options:
+  --repo NAME          Select repository to run (skip interactive selection)
+  --force-ports        Auto-kill processes using required ports (no prompt)
   --reinstall-docker   Force reinstall Docker even if present
   --reinstall-cursor   Force reinstall Cursor even if present
-  --port PORT          Port for demo website (default: 8080)
   --no-open            Don't open Cursor after setup
   --timeout SECONDS    Timeout for Docker startup (default: 120)
   --help               Show this help message
 
 Examples:
-  ./bootstrap                    # Standard setup
-  ./bootstrap --port 3000        # Use port 3000 for demo
-  ./bootstrap --no-open          # Skip opening Cursor
+  ./bootstrap                       # Interactive repo selection
+  ./bootstrap --repo demo-site      # Run demo-site directly
+  ./bootstrap --force-ports         # Auto-free blocked ports
+  ./bootstrap --no-open             # Skip opening Cursor
 EOF
+}
+
+# Get list of available repos
+get_available_repos() {
+    local repos=()
+    for repo_dir in "${SCRIPT_DIR}/repos"/*/; do
+        if [[ -f "${repo_dir}repo.json" ]]; then
+            repos+=("$(basename "$repo_dir")")
+        fi
+    done
+    echo "${repos[@]}"
+}
+
+# Interactive repo selection
+select_repo_interactive() {
+    local repos=($(get_available_repos))
+    local num_repos=${#repos[@]}
+    
+    if [[ $num_repos -eq 0 ]]; then
+        log_error "No repositories found in repos/"
+        exit 1
+    fi
+    
+    print_separator
+    echo ""
+    echo -e "${BOLD}Select a repository to run:${NC}"
+    echo ""
+    
+    local i=1
+    for repo in "${repos[@]}"; do
+        local repo_path="${SCRIPT_DIR}/repos/${repo}"
+        local desc=$(jq -r '.description // "No description"' "${repo_path}/repo.json" 2>/dev/null || echo "No description")
+        echo -e "  ${BOLD}${i})${NC} ${GREEN}${repo}${NC}"
+        echo -e "     ${desc}"
+        echo ""
+        ((i++))
+    done
+    
+    print_separator
+    
+    local selection
+    while true; do
+        echo -n -e "${BOLD}Enter selection (1-${num_repos}): ${NC}"
+        read -r selection
+        
+        if [[ "$selection" =~ ^[0-9]+$ ]] && [[ "$selection" -ge 1 ]] && [[ "$selection" -le "$num_repos" ]]; then
+            SELECTED_REPO="${repos[$((selection-1))]}"
+            break
+        else
+            log_error "Invalid selection. Please enter a number between 1 and ${num_repos}"
+        fi
+    done
+    
+    echo ""
+    log_success "Selected: $SELECTED_REPO"
+}
+
+# Validate selected repo
+validate_selected_repo() {
+    local repo_path="${SCRIPT_DIR}/repos/${SELECTED_REPO}"
+    
+    if [[ ! -d "$repo_path" ]]; then
+        log_error "Repository not found: $SELECTED_REPO"
+        echo ""
+        echo "Available repositories:"
+        for repo in $(get_available_repos); do
+            echo "  - $repo"
+        done
+        exit 1
+    fi
+    
+    if [[ ! -f "${repo_path}/repo.json" ]]; then
+        log_error "No repo.json found in: $SELECTED_REPO"
+        exit 1
+    fi
+    
+    if [[ ! -f "${repo_path}/scripts/start.sh" ]]; then
+        log_error "No scripts/start.sh found in: $SELECTED_REPO"
+        exit 1
+    fi
 }
 
 # Step 1: Check and install Docker
@@ -184,14 +274,44 @@ setup_cursor() {
     fi
 }
 
-# Step 4: Build and start containers
+# Step 4: Check required ports
+check_required_ports() {
+    log_step "Checking required ports..."
+    
+    # Get ports from repo.json if available, otherwise use defaults
+    local ports="$DEFAULT_PORTS"
+    
+    if [[ -n "$SELECTED_REPO" ]]; then
+        local repo_json="${SCRIPT_DIR}/repos/${SELECTED_REPO}/repo.json"
+        if [[ -f "$repo_json" ]]; then
+            local repo_ports=$(jq -r '.ports // [] | .[]' "$repo_json" 2>/dev/null | tr '\n' ' ')
+            if [[ -n "$repo_ports" ]]; then
+                ports="$repo_ports"
+            fi
+        fi
+    fi
+    
+    log_info "Checking ports: $ports"
+    
+    local force_flag=""
+    if $FORCE_PORTS; then
+        force_flag="--force"
+    fi
+    
+    if ! check_and_free_ports "$ports" "$force_flag"; then
+        exit 1
+    fi
+    
+    log_success "All required ports are available"
+}
+
+# Step 5: Build and start containers
 setup_containers() {
     log_step "Setting up Docker containers..."
     
-    # Export port for docker-compose
-    export PORT
     export BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     export VERSION="1.0.0"
+    export SELECTED_REPO
     
     # Build container
     log_info "Building development container..."
@@ -204,32 +324,49 @@ setup_containers() {
     log_success "Container is running"
 }
 
-# Step 5: Start demo web service
-start_demo() {
-    log_step "Starting demo web service..."
+# Step 5: Install dependencies and start services
+start_repo_services() {
+    local repo_path="${SCRIPT_DIR}/repos/${SELECTED_REPO}"
+    local repo_json="${repo_path}/repo.json"
+    local healthcheck=$(jq -r '.healthcheck // ""' "$repo_json")
     
-    # Run demo in the dev container
-    docker compose exec -d dev bash -c "cd /workspace/demo-site && python app.py"
+    log_step "Starting ${SELECTED_REPO} services..."
     
-    # Wait for service to be ready
-    log_info "Waiting for demo service to be ready..."
-    local elapsed=0
-    local max_wait=30
+    # Install dependencies inside container
+    log_info "Installing dependencies..."
+    docker compose exec dev bash -c "/workspace/scripts/start-repo.sh install ${SELECTED_REPO}" || {
+        log_warn "Dependency installation had issues, continuing..."
+    }
     
-    while ! check_url "http://localhost:${PORT}/health"; do
-        if [[ $elapsed -ge $max_wait ]]; then
-            log_warn "Demo service took longer than expected to start"
-            log_info "It may still be starting up..."
-            break
+    # Start services
+    log_info "Starting services..."
+    docker compose exec -d dev bash -c "/workspace/scripts/start-repo.sh ${SELECTED_REPO} start"
+    
+    # Wait for health check
+    if [[ -n "$healthcheck" ]]; then
+        log_info "Waiting for services to be ready..."
+        local elapsed=0
+        local max_wait=60
+        
+        while ! check_url "$healthcheck"; do
+            if [[ $elapsed -ge $max_wait ]]; then
+                log_warn "Services took longer than expected to start"
+                log_info "They may still be starting up..."
+                log_info "Check logs with: ./dev logs"
+                break
+            fi
+            sleep 2
+            elapsed=$((elapsed + 2))
+            printf "."
+        done
+        echo ""
+        
+        if check_url "$healthcheck"; then
+            log_success "Services are running"
         fi
-        sleep 1
-        elapsed=$((elapsed + 1))
-        printf "."
-    done
-    echo ""
-    
-    if check_url "http://localhost:${PORT}/health"; then
-        log_success "Demo service is running"
+    else
+        sleep 3
+        log_success "Services started"
     fi
 }
 
@@ -242,27 +379,47 @@ open_editor() {
     
     log_step "Opening Cursor..."
     
-    $OPEN_CURSOR "$SCRIPT_DIR" || {
-        log_warn "Could not open Cursor automatically"
-        log_info "Please open Cursor manually and open this folder: $SCRIPT_DIR"
-    }
+    # Open Cursor to the selected repo's code folder
+    local repo_code_path="${SCRIPT_DIR}/repos/${SELECTED_REPO}/code"
+    
+    if [[ -d "$repo_code_path" ]]; then
+        $OPEN_CURSOR "$repo_code_path" || {
+            log_warn "Could not open Cursor automatically"
+            log_info "Please open Cursor manually and open this folder: $repo_code_path"
+        }
+    else
+        # Fallback to root if code folder doesn't exist
+        $OPEN_CURSOR "$SCRIPT_DIR" || {
+            log_warn "Could not open Cursor automatically"
+            log_info "Please open Cursor manually and open this folder: $SCRIPT_DIR"
+        }
+    fi
 }
 
 # Print final summary
 print_summary() {
+    local repo_path="${SCRIPT_DIR}/repos/${SELECTED_REPO}"
+    local repo_code_path="${repo_path}/code"
+    local repo_json="${repo_path}/repo.json"
+    
     print_separator
     echo ""
     log_success "Bootstrap complete!"
     echo ""
-    echo -e "    ${BOLD}Demo website:${NC}  http://localhost:${PORT}"
-    echo -e "    ${BOLD}Health check:${NC}  http://localhost:${PORT}/health"
-    echo -e "    ${BOLD}API info:${NC}      http://localhost:${PORT}/api/info"
+    echo -e "    ${BOLD}Repository:${NC} ${SELECTED_REPO}"
+    echo -e "    ${BOLD}Code folder:${NC} repos/${SELECTED_REPO}/code"
+    echo ""
+    echo -e "    ${BOLD}URLs:${NC}"
+    jq -r '.urls | to_entries[] | "      \(.key): \(.value)"' "$repo_json" 2>/dev/null || true
     echo ""
     echo -e "    ${BOLD}Useful commands:${NC}"
-    echo "      ./dev up       - Start containers"
+    echo "      ./dev up       - Start container"
     echo "      ./dev down     - Stop containers"
     echo "      ./dev shell    - Open shell in container"
-    echo "      ./dev logs     - View container logs"
+    echo "      ./dev start    - Start repo services"
+    echo "      ./dev stop     - Stop repo services"
+    echo "      ./dev logs     - View service logs"
+    echo "      ./dev status   - Show service status"
     echo ""
     print_separator
 }
@@ -273,15 +430,22 @@ run_bootstrap() {
     parse_bootstrap_args "$@"
     
     log_info "Operating system: $OS"
-    log_info "Demo port: $PORT"
     log_info "Startup timeout: ${TIMEOUT}s"
+    
+    # Select repo if not specified
+    if [[ -z "$SELECTED_REPO" ]]; then
+        select_repo_interactive
+    else
+        validate_selected_repo
+        log_info "Selected repository: $SELECTED_REPO"
+    fi
     
     setup_docker
     ensure_docker_running
     setup_cursor
+    check_required_ports
     setup_containers
-    start_demo
+    start_repo_services
     open_editor
     print_summary
 }
-

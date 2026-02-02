@@ -21,41 +21,120 @@ cd "$SCRIPT_DIR"
 source "${SCRIPT_DIR}/scripts/utils.sh"
 
 # Default configuration
-PORT="${PORT:-8080}"
 CONTAINER_NAME="workshop-dev"
+SELECTED_REPO_FILE="${SCRIPT_DIR}/.selected-repo"
+
+# Get/set selected repo
+get_selected_repo() {
+    if [[ -f "$SELECTED_REPO_FILE" ]]; then
+        cat "$SELECTED_REPO_FILE"
+    else
+        echo ""
+    fi
+}
+
+set_selected_repo() {
+    echo "$1" > "$SELECTED_REPO_FILE"
+}
+
+# Get list of available repos
+get_available_repos() {
+    local repos=()
+    for repo_dir in "${SCRIPT_DIR}/repos"/*/; do
+        if [[ -f "${repo_dir}repo.json" ]]; then
+            repos+=("$(basename "$repo_dir")")
+        fi
+    done
+    echo "${repos[@]}"
+}
+
+# Interactive repo selection
+select_repo_interactive() {
+    local repos=($(get_available_repos))
+    local num_repos=${#repos[@]}
+    
+    if [[ $num_repos -eq 0 ]]; then
+        log_error "No repositories found in repos/"
+        exit 1
+    fi
+    
+    echo ""
+    echo -e "${BOLD}Select a repository:${NC}"
+    echo ""
+    
+    local i=1
+    for repo in "${repos[@]}"; do
+        local repo_path="${SCRIPT_DIR}/repos/${repo}"
+        local desc=$(jq -r '.description // "No description"' "${repo_path}/repo.json" 2>/dev/null || echo "No description")
+        echo -e "  ${BOLD}${i})${NC} ${GREEN}${repo}${NC} - ${desc}"
+        ((i++))
+    done
+    echo ""
+    
+    local selection
+    while true; do
+        echo -n -e "${BOLD}Enter selection (1-${num_repos}): ${NC}"
+        read -r selection
+        
+        if [[ "$selection" =~ ^[0-9]+$ ]] && [[ "$selection" -ge 1 ]] && [[ "$selection" -le "$num_repos" ]]; then
+            local selected="${repos[$((selection-1))]}"
+            set_selected_repo "$selected"
+            echo "$selected"
+            return 0
+        else
+            log_error "Invalid selection. Please enter a number between 1 and ${num_repos}"
+        fi
+    done
+}
 
 show_dev_usage() {
     cat << EOF
 Workshop Bootstrap - Development Helper
 
-Usage: ./dev <command>
+Usage: ./dev <command> [repo-name]
 
 Commands:
-  up        Start development container
-  down      Stop all containers
-  shell     Open interactive shell in container
-  logs      View container logs (follow mode)
-  restart   Restart containers
-  demo      Start/restart the demo web service
-  build     Rebuild container image
-  status    Show container status
-  clean     Remove containers and images
+  up          Start development container
+  down        Stop all containers
+  shell       Open interactive shell in container
+  start       Start repo services (prompts for repo if not specified)
+  stop        Stop repo services
+  restart     Restart repo services
+  logs        View service logs
+  status      Show container and service status
+  install     Install repo dependencies
+  select      Select/change active repository
+  build       Rebuild container image
+  clean       Remove containers and images
+  list        List available repositories
 
 Examples:
-  ./dev up              # Start container
-  ./dev shell           # Open bash in container
-  ./dev logs            # Follow container logs
-  ./dev demo            # Restart demo service
+  ./dev up                    # Start container
+  ./dev start demo-site       # Start demo-site services
+  ./dev start                 # Start services (prompts for repo)
+  ./dev shell                 # Open bash in container
+  ./dev logs                  # View logs for current repo
+  ./dev select                # Change active repository
 EOF
+}
+
+container_running() {
+    docker compose ps --status running 2>/dev/null | grep -q "$CONTAINER_NAME"
+}
+
+ensure_container_running() {
+    if ! container_running; then
+        log_info "Container not running, starting it first..."
+        cmd_up
+        sleep 2
+    fi
 }
 
 cmd_up() {
     log_step "Starting development container..."
-    export PORT
+    export BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     docker compose up -d dev
     log_success "Container started"
-    
-    # Show status
     docker compose ps
 }
 
@@ -67,67 +146,104 @@ cmd_down() {
 
 cmd_shell() {
     log_step "Opening shell in container..."
-    
-    if ! docker compose ps --status running | grep -q "$CONTAINER_NAME"; then
-        log_info "Container not running, starting it first..."
-        cmd_up
-    fi
-    
+    ensure_container_running
     docker compose exec dev bash
 }
 
-cmd_logs() {
-    log_step "Showing container logs (Ctrl+C to exit)..."
-    docker compose logs -f dev
+cmd_start() {
+    local repo="${1:-$(get_selected_repo)}"
+    
+    if [[ -z "$repo" ]]; then
+        repo=$(select_repo_interactive)
+    fi
+    
+    set_selected_repo "$repo"
+    ensure_container_running
+    
+    log_step "Starting ${repo} services..."
+    docker compose exec dev bash -c "/workspace/scripts/start-repo.sh ${repo} start"
+}
+
+cmd_stop() {
+    local repo="${1:-$(get_selected_repo)}"
+    
+    if [[ -z "$repo" ]]; then
+        log_error "No repository selected. Use: ./dev stop <repo-name>"
+        exit 1
+    fi
+    
+    ensure_container_running
+    
+    log_step "Stopping ${repo} services..."
+    docker compose exec dev bash -c "/workspace/scripts/start-repo.sh ${repo} stop"
 }
 
 cmd_restart() {
-    log_step "Restarting containers..."
-    docker compose restart dev
-    log_success "Containers restarted"
-}
-
-cmd_demo() {
-    log_step "Starting demo web service..."
+    local repo="${1:-$(get_selected_repo)}"
     
-    if ! docker compose ps --status running | grep -q "$CONTAINER_NAME"; then
-        log_info "Container not running, starting it first..."
-        cmd_up
+    if [[ -z "$repo" ]]; then
+        repo=$(select_repo_interactive)
     fi
     
-    # Kill any existing demo process
-    docker compose exec dev pkill -f "python app.py" 2>/dev/null || true
+    set_selected_repo "$repo"
+    ensure_container_running
     
-    # Start demo
-    docker compose exec -d dev bash -c "cd /workspace/demo-site && python app.py"
-    
-    # Wait for service
-    log_info "Waiting for demo service..."
-    sleep 2
-    
-    if check_url "http://localhost:${PORT}/health"; then
-        log_success "Demo service is running at http://localhost:${PORT}"
-    else
-        log_warn "Demo service may still be starting..."
-        log_info "Check with: ./dev logs"
-    fi
+    log_step "Restarting ${repo} services..."
+    docker compose exec dev bash -c "/workspace/scripts/start-repo.sh ${repo} restart"
 }
 
-cmd_build() {
-    log_step "Rebuilding container image..."
-    export PORT
-    export BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    docker compose build --no-cache dev
-    log_success "Image rebuilt"
+cmd_logs() {
+    local repo="${1:-$(get_selected_repo)}"
+    
+    if [[ -z "$repo" ]]; then
+        log_error "No repository selected. Use: ./dev logs <repo-name>"
+        exit 1
+    fi
+    
+    ensure_container_running
+    
+    log_step "Showing logs for ${repo}..."
+    docker compose exec dev bash -c "/workspace/scripts/start-repo.sh ${repo} logs" || \
+        docker compose logs -f dev
 }
 
 cmd_status() {
     log_step "Container status:"
     docker compose ps
     
-    echo ""
-    log_info "Docker resources:"
-    docker system df 2>/dev/null || true
+    local repo="$(get_selected_repo)"
+    if [[ -n "$repo" ]] && container_running; then
+        echo ""
+        echo -e "${BOLD}Active repository:${NC} ${repo}"
+        docker compose exec dev bash -c "/workspace/scripts/start-repo.sh ${repo} status" 2>/dev/null || true
+    fi
+}
+
+cmd_install() {
+    local repo="${1:-$(get_selected_repo)}"
+    
+    if [[ -z "$repo" ]]; then
+        repo=$(select_repo_interactive)
+    fi
+    
+    set_selected_repo "$repo"
+    ensure_container_running
+    
+    log_step "Installing dependencies for ${repo}..."
+    docker compose exec dev bash -c "/workspace/scripts/start-repo.sh install ${repo}"
+}
+
+cmd_select() {
+    local repo=$(select_repo_interactive)
+    log_success "Selected repository: ${repo}"
+    log_info "Use './dev start' to start services"
+}
+
+cmd_build() {
+    log_step "Rebuilding container image..."
+    export BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    docker compose build --no-cache dev
+    log_success "Image rebuilt"
 }
 
 cmd_clean() {
@@ -139,12 +255,36 @@ cmd_clean() {
     log_info "Removing project images..."
     docker compose down --rmi local 2>/dev/null || true
     
+    # Remove selected repo file
+    rm -f "$SELECTED_REPO_FILE"
+    
     log_success "Cleanup complete"
+}
+
+cmd_list() {
+    echo ""
+    echo -e "${BOLD}Available repositories:${NC}"
+    echo ""
+    
+    for repo_dir in "${SCRIPT_DIR}/repos"/*/; do
+        if [[ -f "${repo_dir}repo.json" ]]; then
+            local name=$(basename "$repo_dir")
+            local desc=$(jq -r '.description // "No description"' "${repo_dir}repo.json" 2>/dev/null || echo "No description")
+            local current=""
+            if [[ "$name" == "$(get_selected_repo)" ]]; then
+                current=" ${GREEN}(active)${NC}"
+            fi
+            echo -e "  ${GREEN}${name}${NC}${current}"
+            echo -e "    ${desc}"
+            echo ""
+        fi
+    done
 }
 
 # Run dev command
 run_dev_command() {
     local cmd="${1:-}"
+    shift 2>/dev/null || true
     
     case "$cmd" in
         up)
@@ -156,23 +296,35 @@ run_dev_command() {
         shell)
             cmd_shell
             ;;
-        logs)
-            cmd_logs
+        start)
+            cmd_start "$@"
+            ;;
+        stop)
+            cmd_stop "$@"
             ;;
         restart)
-            cmd_restart
+            cmd_restart "$@"
             ;;
-        demo)
-            cmd_demo
-            ;;
-        build)
-            cmd_build
+        logs)
+            cmd_logs "$@"
             ;;
         status)
             cmd_status
             ;;
+        install)
+            cmd_install "$@"
+            ;;
+        select)
+            cmd_select
+            ;;
+        build)
+            cmd_build
+            ;;
         clean)
             cmd_clean
+            ;;
+        list)
+            cmd_list
             ;;
         help|--help|-h)
             show_dev_usage
@@ -191,4 +343,3 @@ run_dev_command() {
             ;;
     esac
 }
-

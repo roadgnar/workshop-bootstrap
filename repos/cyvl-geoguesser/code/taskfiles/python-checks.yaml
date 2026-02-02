@@ -1,0 +1,72 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: "3"
+
+vars:
+  taplo_files: "**/pyproject.toml"
+
+tasks:
+  install:
+    silent: true
+    desc: "Install python dependencies. Prefer the top-level install task."
+    dir: api
+    cmd: uv sync --all-packages --all-groups --all-extras
+
+  types:
+    desc: "Check types."
+    dir: api
+    cmds:
+      - uv run --all-packages basedpyright . {{.CLI_ARGS}}
+
+  lint:
+    desc: "Lint the codebase."
+    deps: [lint:ruff, lint:taplo]
+
+  lint:ruff:
+    internal: true
+    dir: api
+    cmd: uv run ruff check
+
+  lint:taplo:
+    internal: true
+    dir: api
+    cmd: uv run taplo lint '{{.taplo_files}}'
+
+  formatting:
+    desc: "Check Python formatting."
+    deps:
+      - formatting:taplo
+      - formatting:ruff
+
+  formatting:ruff:
+    internal: true
+    dir: api
+    cmds:
+      - uv run ruff format --check
+
+  formatting:taplo:
+    internal: true
+    dir: api
+    cmds:
+      - uv run taplo format --check '{{.taplo_files}}'
+
+  check:
+    desc: |
+      Lint, check formatting, and check types. This ignores errors and so is not
+      useful in CI.
+    ignore_error: true
+    cmds:
+      - task: lint
+      - task: formatting
+      - task: types
+
+  fix:
+    desc: |
+      Run the ruff formatter and lint fixer. This ignores errors and so is not
+      useful in CI.
+    ignore_error: true
+    dir: api
+    cmds:
+      - uv run taplo format '{{.taplo_files}}'
+      - uv run ruff format
+      - uv run ruff check --fix

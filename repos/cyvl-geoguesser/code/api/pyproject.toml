@@ -1,0 +1,34 @@
+[project]
+description     = "Add your description here"
+name            = "cyvl-geoguessr-api"
+readme          = "README.md"
+requires-python = ">=3.12"
+version         = "0.1.0"
+
+[dependency-groups]
+# TODO: update basedpyright once cursor's vscode version passes 1.100
+# https://github.com/DetachHead/basedpyright/issues/1395
+dev = [
+    "basedpyright==1.29.1",
+    "ruff>=0.12.4",
+    "taplo>=0.9.3",
+]
+
+[tool.uv.workspace]
+members = [
+    "apps/geolocation-api",
+    "packages/round-generator",
+    "packages/state-management",
+    "packages/models",
+    "packages/scoring",
+]
+
+[tool.uv.sources]
+geolocation-api   = { workspace = true }
+round-generator   = { workspace = true }
+state-management  = { workspace = true }
+models            = { workspace = true }
+scoring           = { workspace = true }
+
+[tool.uv]
+override-dependencies = ["typer>=0.9.0"]
