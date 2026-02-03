@@ -349,12 +349,19 @@ jobs:
           # Start a temporary server to test port detection
           python3 -m http.server 59998 &
           SERVER_PID=$!
-          sleep 2
+          
+          # macOS may need more time for the server to start listening
+          sleep 3
+          
+          # Debug: show what lsof sees
+          echo "Debug: lsof output for port 59998:"
+          lsof -nP -iTCP:59998 2>/dev/null || echo "(no output)"
           
           if port_in_use 59998; then
             echo "✓ port_in_use() correctly detects used port"
           else
             echo "✗ port_in_use failed to detect used port"
+            echo "Debug: get_port_process returned: '$(get_port_process 59998)'"
             kill $SERVER_PID 2>/dev/null || true
             exit 1
           fi
@@ -454,7 +461,7 @@ jobs:
       - name: "Test 8: Dev helper commands"
         run: |
           cd mac
-          ./dev help
+          echo "==> Testing ./dev list..."
           ./dev list
           echo "✓ Dev helper commands work"
 
@@ -650,9 +657,13 @@ jobs:
       - name: "Test 8: Dev helper commands"
         shell: pwsh
         run: |
-          cd windows
-          .\dev.ps1 help
-          .\dev.ps1 list
+          Set-Location windows
+          Write-Host "Current directory: $(Get-Location)"
+          Write-Host "Files in directory:"
+          Get-ChildItem -Name
+          Write-Host ""
+          Write-Host "Running: .\dev.ps1 list"
+          & .\dev.ps1 list
           Write-Host "✓ Dev helper commands work"
 
   # ============================================

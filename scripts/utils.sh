@@ -173,16 +173,26 @@ parse_args() {
 # Get process using a specific port
 get_port_process() {
     local port="$1"
+    local pid=""
     
     if command_exists lsof; then
-        lsof -i ":$port" -sTCP:LISTEN -t 2>/dev/null
+        # Use -nP for no hostname/port name resolution (faster, more reliable)
+        # -iTCP:port matches TCP connections on the specific port
+        # -t outputs only PIDs
+        # On macOS, -sTCP:LISTEN might not work, so we filter with grep
+        pid=$(lsof -nP -iTCP:"$port" 2>/dev/null | grep -i listen | awk '{print $2}' | head -1)
+        
+        # Fallback: if no LISTEN found, try any process on the port
+        if [[ -z "$pid" ]]; then
+            pid=$(lsof -nP -i :"$port" -t 2>/dev/null | head -1)
+        fi
     elif command_exists ss; then
-        ss -tlnp "sport = :$port" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1
+        pid=$(ss -tlnp "sport = :$port" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)
     elif command_exists netstat; then
-        netstat -tlnp 2>/dev/null | grep ":$port " | awk '{print $7}' | cut -d'/' -f1 | head -1
-    else
-        return 1
+        pid=$(netstat -tlnp 2>/dev/null | grep ":$port " | awk '{print $7}' | cut -d'/' -f1 | head -1)
     fi
+    
+    echo "$pid"
 }
 
 # Get process name for a PID
