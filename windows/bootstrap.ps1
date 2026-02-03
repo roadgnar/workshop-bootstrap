@@ -187,7 +187,27 @@ function Setup-Docker {
         
         Install-DockerWindows
     }
+}
+
+function Ensure-DockerRunning {
+    Write-Step "Checking Docker daemon..."
     
+    if (Test-DockerRunning) {
+        Write-Success "Docker daemon is running"
+    }
+    else {
+        Write-Info "Docker daemon not running, starting..."
+        $started = Start-DockerWindows -TimeoutSec $TimeoutSec
+        
+        if (-not $started) {
+            Write-ErrorMsg "Failed to start Docker daemon"
+            Write-Info ""
+            Write-Info "Please start Docker Desktop manually and re-run this script"
+            exit 1
+        }
+    }
+    
+    # Check Docker Compose (must be after daemon is running)
     if (Test-ComposeAvailable) {
         Write-Success "Docker Compose is available"
         $composeVersion = docker compose version 2>&1
@@ -196,25 +216,6 @@ function Setup-Docker {
     else {
         Write-ErrorMsg "Docker Compose not available"
         Write-Info "Please ensure Docker Desktop is properly installed"
-        exit 1
-    }
-}
-
-function Ensure-DockerRunning {
-    Write-Step "Checking Docker daemon..."
-    
-    if (Test-DockerRunning) {
-        Write-Success "Docker daemon is running"
-        return
-    }
-    
-    Write-Info "Docker daemon not running, starting..."
-    $started = Start-DockerWindows -TimeoutSec $TimeoutSec
-    
-    if (-not $started) {
-        Write-ErrorMsg "Failed to start Docker daemon"
-        Write-Info ""
-        Write-Info "Please start Docker Desktop manually and re-run this script"
         exit 1
     }
 }

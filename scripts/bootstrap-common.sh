@@ -216,16 +216,6 @@ setup_docker() {
             linux) install_docker_linux ;;
         esac
     fi
-    
-    # Check Docker Compose
-    if compose_available; then
-        log_success "Docker Compose is available"
-        docker compose version | head -1 | sed 's/^/    /'
-    else
-        log_error "Docker Compose not available"
-        log_info "Please ensure Docker Compose plugin is installed"
-        exit 1
-    fi
 }
 
 # Step 2: Ensure Docker daemon is running
@@ -234,16 +224,25 @@ ensure_docker_running() {
     
     if docker_running; then
         log_success "Docker daemon is running"
-        return 0
+    else
+        log_info "Docker daemon not running, starting..."
+        $START_DOCKER "$TIMEOUT" || {
+            log_error "Failed to start Docker daemon"
+            log_info ""
+            log_info "Please start Docker manually and re-run this script"
+            exit 1
+        }
     fi
     
-    log_info "Docker daemon not running, starting..."
-    $START_DOCKER "$TIMEOUT" || {
-        log_error "Failed to start Docker daemon"
-        log_info ""
-        log_info "Please start Docker manually and re-run this script"
+    # Check Docker Compose (must be after daemon is running)
+    if compose_available; then
+        log_success "Docker Compose is available"
+        docker compose version | head -1 | sed 's/^/    /'
+    else
+        log_error "Docker Compose not available"
+        log_info "Please ensure Docker Compose plugin is installed"
         exit 1
-    }
+    fi
 }
 
 # Step 3: Check and install Cursor
