@@ -45,12 +45,13 @@ get_available_repos() {
             repos+=("$(basename "$repo_dir")")
         fi
     done
-    echo "${repos[@]}"
+    printf '%s\n' "${repos[@]}"
 }
 
 # Interactive repo selection
 select_repo_interactive() {
-    local repos=($(get_available_repos))
+    local repos=()
+    mapfile -t repos < <(get_available_repos)
     local num_repos=${#repos[@]}
     
     if [[ $num_repos -eq 0 ]]; then
