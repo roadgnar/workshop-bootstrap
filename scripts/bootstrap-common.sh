@@ -280,6 +280,17 @@ setup_cursor() {
 check_required_ports() {
     log_step "Checking required ports..."
     
+    # Stop any existing containers first to free Docker-bound ports
+    if docker_running; then
+        local running_containers
+        running_containers=$(docker ps -q 2>/dev/null)
+        if [[ -n "$running_containers" ]]; then
+            log_info "Stopping existing containers to free ports..."
+            docker compose down >/dev/null 2>&1 || true
+            docker stop $running_containers >/dev/null 2>&1 || true
+        fi
+    fi
+    
     # Get ports from repo.json if available, otherwise use defaults
     local ports="$DEFAULT_PORTS"
     
