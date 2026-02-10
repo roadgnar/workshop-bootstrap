@@ -43,7 +43,6 @@ logs/
 
 # Local environment
 .env
-.env.local
 .env.*.local
 .selected-repo
 
