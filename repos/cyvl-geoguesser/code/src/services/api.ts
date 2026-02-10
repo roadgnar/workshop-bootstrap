@@ -3,8 +3,6 @@
 import type {
   CreateGameResponse,
   GetGameResponse,
-  SubmitGuessRequest,
-  SubmitGuessResponse,
   Location,
 } from '../types/api';
 
@@ -66,18 +64,3 @@ export async function getGame(gameId: string): Promise<GetGameResponse> {
 
   return response.json();
 }
-
-/**
- * Submits a guess for a specific round — see SRS Section 4.2 (API-003)
- */
-export async function submitGuess(
-  roundId: string,
-  guessLocation: Location
-): Promise<SubmitGuessResponse> {
-  if (mockApi) {
-    return mockApi.submitGuess(roundId, guessLocation);
-  }
-
-  throw new Error('Not implemented');
-}
-

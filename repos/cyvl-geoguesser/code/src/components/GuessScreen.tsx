@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import StreetViewer from './StreetViewer';
 import MiniMap from './MiniMap';
-import { getGame, submitGuess } from '../services/api';
+import { getGame } from '../services/api';
 import type { Game, Round, Location } from '../types/api';
 
 export default function GuessScreen() {
@@ -13,7 +13,6 @@ export default function GuessScreen() {
   const [currentRound, setCurrentRound] = useState<Round | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!gameId) {
@@ -47,18 +46,8 @@ export default function GuessScreen() {
 
   const handleGuess = async (location: Location) => {
     if (!currentRound || !gameId) return;
-
-    try {
-      setSubmitting(true);
-      await submitGuess(currentRound.id, location);
-
-      // Navigate to score screen
-      const roundIndex = game?.current_round_index ?? 0;
-      navigate(`/game/${gameId}/score/${roundIndex}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit guess');
-      setSubmitting(false);
-    }
+    const roundIndex = game?.current_round_index ?? 0;
+    navigate(`/game/${gameId}/score/${roundIndex}`);
   };
 
   if (loading) {
@@ -103,14 +92,6 @@ export default function GuessScreen() {
     <div className="w-screen h-screen relative overflow-hidden">
       <StreetViewer imageUrl={currentRound.image_url} />
       <MiniMap onGuess={handleGuess} />
-      
-      {submitting && (
-        <div className="fixed top-0 left-0 w-screen h-screen bg-black/70 flex flex-col items-center justify-center gap-5 z-[2000] text-[#fffffe] text-lg">
-          <div className="w-12 h-12 border-4 border-[#dbff00]/30 border-t-[#dbff00] rounded-full animate-spin"></div>
-          <p>Submitting guess...</p>
-        </div>
-      )}
     </div>
   );
 }
-

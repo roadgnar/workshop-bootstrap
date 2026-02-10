@@ -8,9 +8,9 @@ export interface Location {
 export interface Round {
   id: string; // UUID
   image_url: string;
-  actual_location: Location | null; // null until guess is submitted
-  guess_location: Location | null; // null until guess is submitted
-  score: number | null; // null until guess is submitted
+  actual_location: Location | null;
+  guess_location: Location | null;
+  score: number | null;
 }
 
 export interface Game {
@@ -31,15 +31,3 @@ export interface GetGameResponse {
   rounds: Round[];
   current_score: number;
 }
-
-export interface SubmitGuessRequest {
-  guess_location: Location;
-}
-
-export interface SubmitGuessResponse {
-  completed_round: Round;
-  is_last_round: boolean;
-  score_from_last_round: number;
-  total_current_score: number;
-}
-

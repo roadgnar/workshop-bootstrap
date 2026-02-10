@@ -1,19 +1,14 @@
 from pathlib import Path
 import uuid
-import copy
 from round_generator.data_store import FileBasedDataStore
 from fastapi import APIRouter, HTTPException, status
-from pydantic import UUID1, BaseModel
 from uuid import UUID
 from models.models import Game, Round, Location
 from round_generator.round_generator import RandomRoundGenerator
 from state_management.state import (
     CreateGameResponse,
     GameStateResponse,
-    GuessResponse,
-    GuessRequest,
 )
-from scoring.score_round import score_round as score_round_function
 
 router = APIRouter()
 
@@ -71,12 +66,3 @@ async def get_game_state(id: str):
         current_score=current_game.current_score,
     )
     return response
-
-
-@router.post("/guess/{round_id}", response_model=GuessResponse)
-async def submit_guess(round_id: UUID, guess_request: GuessRequest):
-    """Submit a guess for a specific round — see SRS Section 4.2 (API-003)"""
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Not implemented",
-    )
