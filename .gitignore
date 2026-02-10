@@ -52,6 +52,9 @@ temp/
 *.tmp
 *.temp
 
+# Cursor config in repo code dirs (synced at runtime from root .cursor/)
+repos/*/code/.cursor/
+
 # Build artifacts
 dist/
 build/
