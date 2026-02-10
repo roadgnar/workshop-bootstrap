@@ -70,7 +70,7 @@ This document describes *how* the system is built. For *what* it must do, see th
 | Utilities | `scripts/utils.sh`, `scripts/utils.ps1` | [FR-010](SRS.md#33-detection-and-decision-logic), [FR-034--036](SRS.md#36-port-management) |
 | Docker Installers | `scripts/install-docker-{macos,linux,windows}.*` | [FR-020--023](SRS.md#34-docker-installation) |
 | Cursor Installers | `scripts/install-cursor-{macos,linux,windows}.*` | [FR-030--033](SRS.md#35-cursor-installation) |
-| Repo Manager | `scripts/start-repo.sh` | [FR-004--008](SRS.md#32-multi-repository-support), [FR-080](SRS.md#311-cursor-configuration-syncing) |
+| Repo Manager | `scripts/start-repo.sh` | [FR-004--008](SRS.md#32-multi-repository-support) |
 | Per-Repo Scripts | `repos/*/scripts/start.sh` | [FR-005](SRS.md#32-multi-repository-support) |
 | Container Image | `Dockerfile` | [FR-040](SRS.md#37-development-container) |
 | Compose Config | `docker-compose.yml` | [FR-040, FR-041](SRS.md#37-development-container) |
