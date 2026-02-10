@@ -301,10 +301,19 @@ check_required_ports() {
     fi
     
     if ! check_and_free_ports "$ports" "$force_flag"; then
-        exit 1
+        echo ""
+        echo -n -e "    ${YELLOW}?${NC} Ports could not be freed. Try to continue anyway? [y/N]: "
+        read -r retry_response
+        
+        if [[ "$retry_response" =~ ^[Yy]$ ]]; then
+            log_warn "Continuing with ports potentially in use -- services may fail to bind"
+        else
+            log_error "Bootstrap aborted. Free the ports above and try again."
+            exit 1
+        fi
+    else
+        log_success "All required ports are available"
     fi
-    
-    log_success "All required ports are available"
 }
 
 # Step 5: Build and start containers
