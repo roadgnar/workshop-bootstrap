@@ -203,7 +203,7 @@ A self-contained repository template that provides a one-command developer setup
 
 ## 3.11 Cursor Configuration Syncing
 
-**FR-080** Shared Cursor IDE rules and commands from the workspace root must be synced into each repo's code directory during dependency installation, so that Cursor inherits them when opened to a repo.
+**FR-080** Each repo's `code/` directory must include its own `.cursor/` configuration (rules, commands) so that Cursor inherits them when opened to that directory.
 
 ---
 
