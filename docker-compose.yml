@@ -22,7 +22,6 @@ services:
     environment:
       - VERSION=${VERSION:-1.0.0}
       - SELECTED_REPO=${SELECTED_REPO:-}
-      - VITE_MAPBOX_TOKEN=${VITE_MAPBOX_TOKEN:-}
       - FLASK_ENV=development
     working_dir: /workspace
     command: sleep infinity
