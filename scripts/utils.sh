@@ -185,9 +185,12 @@ is_docker_port() {
     return 1
 }
 
-# Get process using a specific port (runs with sudo fallback for root-owned processes)
+# Get process using a specific port
+# Pass "sudo" as second arg to enable sudo fallback for root-owned processes
+# NOTE: All log messages go to stderr (&2) so they don't corrupt the return value
 get_port_process() {
     local port="$1"
+    local use_sudo="${2:-false}"
     local pid=""
     
     if command_exists lsof; then
@@ -199,9 +202,9 @@ get_port_process() {
             pid=$(lsof -nP -i :"$port" -t 2>/dev/null | head -1)
         fi
         
-        # Fallback: try with sudo (catches root-owned processes like docker-proxy)
-        if [[ -z "$pid" ]] && [[ $EUID -ne 0 ]]; then
-            log_info "Checking port $port with elevated privileges (your password may be required)..."
+        # Fallback: try with sudo (only when explicitly requested)
+        if [[ -z "$pid" ]] && [[ "$use_sudo" == "sudo" ]] && [[ $EUID -ne 0 ]]; then
+            log_info "Checking port $port with elevated privileges (your password may be required)..." >&2
             pid=$(sudo lsof -nP -iTCP:"$port" 2>/dev/null | grep -i listen | awk '{print $2}' | head -1)
         fi
     elif command_exists ss; then
@@ -260,7 +263,7 @@ kill_port_process() {
     # If Docker is holding the port, stop the container instead
     if is_docker_port "$port"; then
         log_info "Port $port is held by a Docker container, stopping containers..."
-        docker compose down 2>/dev/null || docker stop $(docker ps -q) 2>/dev/null || true
+        docker compose down >/dev/null 2>&1 || docker stop $(docker ps -q 2>/dev/null) >/dev/null 2>&1 || true
         sleep 2
         # Re-check if port is now free
         if ! port_in_use "$port"; then
@@ -270,7 +273,7 @@ kill_port_process() {
     fi
     
     local pid
-    pid=$(get_port_process "$port")
+    pid=$(get_port_process "$port" "sudo")
     
     if [[ -n "$pid" ]]; then
         kill "$pid" 2>/dev/null || sudo kill "$pid" 2>/dev/null || {
@@ -351,6 +354,52 @@ print_port_help() {
     echo ""
 }
 
+# Stop all Docker containers holding any of the given ports (done once, not per-port)
+free_docker_ports() {
+    log_info "Docker containers are holding ports, stopping them..."
+    docker compose down >/dev/null 2>&1 || true
+    docker stop $(docker ps -q 2>/dev/null) >/dev/null 2>&1 || true
+    sleep 2
+}
+
+# Free blocked ports: handles Docker ports as a batch, then regular ports individually
+free_blocked_ports() {
+    local blocked_ports=("$@")
+    local has_docker=false
+    local failed=false
+    
+    # Check if any ports are Docker -- if so, stop containers once
+    for port in "${blocked_ports[@]}"; do
+        if is_docker_port "$port"; then
+            has_docker=true
+            break
+        fi
+    done
+    
+    if $has_docker; then
+        free_docker_ports
+    fi
+    
+    # Now handle any remaining blocked ports
+    for port in "${blocked_ports[@]}"; do
+        if ! port_in_use "$port"; then
+            log_success "Freed port $port"
+            continue
+        fi
+        
+        # Port is still in use after Docker cleanup -- try killing the process
+        if kill_port_process "$port"; then
+            log_success "Freed port $port"
+        else
+            log_error "Failed to free port $port"
+            failed=true
+        fi
+    done
+    
+    $failed && return 1
+    return 0
+}
+
 # Check ports and optionally free them
 # Usage: check_and_free_ports "8080 5173 8000" [--force]
 check_and_free_ports() {
@@ -372,7 +421,7 @@ check_and_free_ports() {
                 if [[ -n "$pid" ]]; then
                     port_info+=("$port (PID: $pid, Process: $name)")
                 else
-                    port_info+=("$port (unknown process -- may need sudo to detect)")
+                    port_info+=("$port (unknown process)")
                 fi
             fi
         fi
@@ -389,28 +438,13 @@ check_and_free_ports() {
     done
     echo ""
     
-    # If force flag is set, kill without asking
+    # If force flag is set, free without asking
     if [[ "$force" == "true" ]] || [[ "$force" == "--force" ]]; then
-        log_info "Stopping processes on blocked ports..."
-        if [[ $EUID -ne 0 ]]; then
-            log_info "Your password may be required to stop some processes."
+        if free_blocked_ports "${blocked_ports[@]}"; then
+            return 0
         fi
-        local failed=false
-        for port in "${blocked_ports[@]}"; do
-            if kill_port_process "$port"; then
-                log_success "Freed port $port"
-            else
-                log_error "Failed to free port $port"
-                failed=true
-            fi
-        done
-        
-        if $failed; then
-            local port_list="${blocked_ports[*]}"
-            print_port_help "$port_list"
-            return 1
-        fi
-        return 0
+        print_port_help "${blocked_ports[*]}"
+        return 1
     fi
     
     # Ask user for confirmation
@@ -418,29 +452,14 @@ check_and_free_ports() {
     read -r response
     
     if [[ "$response" =~ ^[Yy]$ ]]; then
-        if [[ $EUID -ne 0 ]]; then
-            log_info "Your password may be required to stop some processes."
+        if free_blocked_ports "${blocked_ports[@]}"; then
+            return 0
         fi
-        local failed=false
-        for port in "${blocked_ports[@]}"; do
-            if kill_port_process "$port"; then
-                log_success "Freed port $port"
-            else
-                log_error "Failed to free port $port"
-                failed=true
-            fi
-        done
-        
-        if $failed; then
-            local port_list="${blocked_ports[*]}"
-            print_port_help "$port_list"
-            return 1
-        fi
-        return 0
+        print_port_help "${blocked_ports[*]}"
+        return 1
     else
         log_warn "Cannot continue with ports in use"
-        local port_list="${blocked_ports[*]}"
-        print_port_help "$port_list"
+        print_port_help "${blocked_ports[*]}"
         return 1
     fi
 }

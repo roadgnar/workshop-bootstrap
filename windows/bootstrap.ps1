@@ -246,6 +246,16 @@ function Setup-Cursor {
 function Check-RequiredPorts {
     Write-Step "Checking required ports..."
     
+    # Stop any existing containers first to free Docker-bound ports
+    if (Test-DockerRunning) {
+        $containers = docker ps -q 2>$null
+        if ($containers) {
+            Write-Info "Stopping existing containers to free ports..."
+            docker compose down 2>$null | Out-Null
+            docker stop $containers 2>$null | Out-Null
+        }
+    }
+    
     # Default ports
     $ports = @(8080, 5173, 8000, 3000)
     
