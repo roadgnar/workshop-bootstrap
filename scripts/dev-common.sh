@@ -51,7 +51,9 @@ get_available_repos() {
 # Interactive repo selection
 select_repo_interactive() {
     local repos=()
-    mapfile -t repos < <(get_available_repos)
+    local IFS=$'\n'
+    repos=( $(get_available_repos) )
+    unset IFS
     local num_repos=${#repos[@]}
     
     if [[ $num_repos -eq 0 ]]; then
