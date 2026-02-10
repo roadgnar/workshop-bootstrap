@@ -269,10 +269,20 @@ function Check-RequiredPorts {
     $result = Test-AndFreePorts -Ports $ports -Force:$ForcePorts
     
     if (-not $result) {
-        exit 1
+        Write-Host ""
+        $retry = Read-Host "    ? Ports could not be freed. Try to continue anyway? [y/N]"
+        
+        if ($retry -match '^[Yy]$') {
+            Write-Warn "Continuing with ports potentially in use -- services may fail to bind"
+        }
+        else {
+            Write-ErrorMsg "Bootstrap aborted. Free the ports above and try again."
+            exit 1
+        }
     }
-    
-    Write-Success "All required ports are available"
+    else {
+        Write-Success "All required ports are available"
+    }
 }
 
 function Setup-Containers {
