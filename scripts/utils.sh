@@ -200,7 +200,8 @@ get_port_process() {
         fi
         
         # Fallback: try with sudo (catches root-owned processes like docker-proxy)
-        if [[ -z "$pid" ]]; then
+        if [[ -z "$pid" ]] && [[ $EUID -ne 0 ]]; then
+            log_info "Checking port $port with elevated privileges (your password may be required)..."
             pid=$(sudo lsof -nP -iTCP:"$port" 2>/dev/null | grep -i listen | awk '{print $2}' | head -1)
         fi
     elif command_exists ss; then
@@ -391,6 +392,9 @@ check_and_free_ports() {
     # If force flag is set, kill without asking
     if [[ "$force" == "true" ]] || [[ "$force" == "--force" ]]; then
         log_info "Stopping processes on blocked ports..."
+        if [[ $EUID -ne 0 ]]; then
+            log_info "Your password may be required to stop some processes."
+        fi
         local failed=false
         for port in "${blocked_ports[@]}"; do
             if kill_port_process "$port"; then
@@ -414,6 +418,9 @@ check_and_free_ports() {
     read -r response
     
     if [[ "$response" =~ ^[Yy]$ ]]; then
+        if [[ $EUID -ne 0 ]]; then
+            log_info "Your password may be required to stop some processes."
+        fi
         local failed=false
         for port in "${blocked_ports[@]}"; do
             if kill_port_process "$port"; then
