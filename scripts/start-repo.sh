@@ -61,6 +61,20 @@ validate_repo() {
     fi
 }
 
+# Copy shared .cursor config into a repo's code directory
+sync_cursor_config() {
+    local repo="$1"
+    local repo_path="${REPOS_DIR}/${repo}"
+    local code_dir="${repo_path}/code"
+    local shared_cursor="${WORKSPACE_DIR}/.cursor"
+
+    if [[ -d "$shared_cursor" && -d "$code_dir" ]]; then
+        log_info "Syncing shared .cursor config into ${repo}/code/..."
+        cp -r "$shared_cursor" "${code_dir}/.cursor"
+        log_success "Cursor rules and commands synced"
+    fi
+}
+
 # Install dependencies for a repo
 install_deps() {
     local repo="$1"
@@ -148,6 +162,7 @@ case "${1:-}" in
         ;;
     install)
         validate_repo "${2:-}"
+        sync_cursor_config "${2:-}"
         install_deps "${2:-}"
         ;;
     "")
