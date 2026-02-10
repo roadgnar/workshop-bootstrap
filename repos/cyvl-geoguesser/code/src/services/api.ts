@@ -68,7 +68,7 @@ export async function getGame(gameId: string): Promise<GetGameResponse> {
 }
 
 /**
- * Submits a guess for a specific round
+ * Submits a guess for a specific round — see SRS Section 4.2 (API-003)
  */
 export async function submitGuess(
   roundId: string,
@@ -78,20 +78,6 @@ export async function submitGuess(
     return mockApi.submitGuess(roundId, guessLocation);
   }
 
-  const response = await fetch(`${API_BASE_URL}/guess/${roundId}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      guess_location: guessLocation,
-    } as SubmitGuessRequest),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to submit guess: ${response.statusText}`);
-  }
-
-  return response.json();
+  throw new Error('Not implemented');
 }
 

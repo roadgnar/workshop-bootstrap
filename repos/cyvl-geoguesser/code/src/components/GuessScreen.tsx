@@ -50,18 +50,11 @@ export default function GuessScreen() {
 
     try {
       setSubmitting(true);
-      const response = await submitGuess(currentRound.id, location);
-      
-      // Navigate to score screen with the round index
+      await submitGuess(currentRound.id, location);
+
+      // Navigate to score screen
       const roundIndex = game?.current_round_index ?? 0;
-      navigate(`/game/${gameId}/score/${roundIndex}`, {
-        state: {
-          round: response.completed_round,
-          isLastRound: response.is_last_round,
-          scoreFromLastRound: response.score_from_last_round,
-          totalCurrentScore: response.total_current_score,
-        },
-      });
+      navigate(`/game/${gameId}/score/${roundIndex}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit guess');
       setSubmitting(false);

@@ -75,35 +75,8 @@ async def get_game_state(id: str):
 
 @router.post("/guess/{round_id}", response_model=GuessResponse)
 async def submit_guess(round_id: UUID, guess_request: GuessRequest):
-    """
-    Submit a guess for a specific round — see SRS Section 4.2 (API-003)
-
-    Args:
-        round_id: UUID of the round to submit a guess for
-        guess_request: Contains the guessed location (latitude, longitude)
-
-    Returns:
-        GuessResponse with: completed_round, is_last_round, score_from_last_round, total_current_score
-    """
-    # TODO: Implement guess submission — see SRS Section 4.2 (API-003)
-    #
-    # This endpoint should:
-    # 1. Validate that a game exists (return 404 if not)
-    # 2. Set the current round's guess_location from the request
-    # 3. Calculate the score using the scoring package (score_round_function)
-    # 4. Set the current round's score
-    # 5. Add the round score to the game's current_score
-    # 6. Determine if this is the last round (current_round_index == len(rounds) - 1)
-    # 7. If not the last round: advance current_round_index and current_round_id
-    # 8. If the last round: set current_round_id to None
-    # 9. Return a GuessResponse with the completed round data
-    #
-    # Hints:
-    # - Use copy.deepcopy() to capture the round state BEFORE advancing to the next round
-    # - The score_round_function is imported at the top of this file
-    # - Look at how create_game and get_game_state use the global current_game variable
-
+    """Submit a guess for a specific round — see SRS Section 4.2 (API-003)"""
     raise HTTPException(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Guess submission not yet implemented — see SRS Section 4.2 (API-003)",
+        detail="Not implemented",
     )
