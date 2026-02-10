@@ -88,7 +88,8 @@ install_deps() {
             fi
             if [[ -f "${code_dir}/api/pyproject.toml" ]]; then
                 # Use --all-packages to install all workspace packages including their deps
-                cd "${code_dir}/api" && uv sync --all-packages
+                # Use --no-dev to skip dev tools (ruff, taplo, etc.) that may need Rust/cargo
+                cd "${code_dir}/api" && uv sync --all-packages --no-dev
             elif [[ -f "${code_dir}/requirements.txt" ]]; then
                 pip install -r "${code_dir}/requirements.txt"
             fi
