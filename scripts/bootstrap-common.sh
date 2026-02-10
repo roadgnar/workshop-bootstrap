@@ -181,9 +181,9 @@ validate_selected_repo() {
         log_error "Repository not found: $SELECTED_REPO"
         echo ""
         echo "Available repositories:"
-        for repo in $(get_available_repos); do
+        while IFS= read -r repo; do
             echo "  - $repo"
-        done
+        done < <(get_available_repos)
         exit 1
     fi
     
