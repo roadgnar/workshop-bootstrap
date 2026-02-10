@@ -37,7 +37,7 @@ start_backend() {
     cd "$CODE_DIR/api"
     
     # Use setsid to create new process group (prevents zombie processes)
-    setsid uv run uvicorn geolocation_api.app:app --reload --host 0.0.0.0 --port 8000 \
+    setsid uv run --no-dev uvicorn geolocation_api.app:app --reload --host 0.0.0.0 --port 8000 \
         > "$LOG_DIR/backend.log" 2>&1 &
     
     echo $! > "$LOG_DIR/backend.pid"
