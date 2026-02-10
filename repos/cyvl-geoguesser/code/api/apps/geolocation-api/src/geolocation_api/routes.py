@@ -76,55 +76,34 @@ async def get_game_state(id: str):
 @router.post("/guess/{round_id}", response_model=GuessResponse)
 async def submit_guess(round_id: UUID, guess_request: GuessRequest):
     """
-    Submit a guess for a specific round
+    Submit a guess for a specific round — see SRS Section 4.2 (API-003)
 
     Args:
         round_id: UUID of the round to submit a guess for
         guess_request: Contains the guessed location (latitude, longitude)
 
     Returns:
-        GuessResponse containing the updated round with score and is_last_round flag
+        GuessResponse with: completed_round, is_last_round, score_from_last_round, total_current_score
     """
-    # TODO: Integrate with state-management package to:
-    # 1. Retrieve the round from state
-    # 2. Calculate the score based on distance between actual and guess locations
-    # 3. Update the round with guess_location and score
-    # 4. Determine if this is the last round in the game
-    # 5. Save updated state
-    global current_game
-    if current_game is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No active game state found. Please create a game first.",
-        )
-    current_game.rounds[current_game.current_round_index].guess_location = (
-        guess_request.guess_location
-    )
-    score_round = score_round_function(
-        current_game.rounds[current_game.current_round_index],
-        guess_request.guess_location,
-    )
-    current_game.rounds[current_game.current_round_index].score = score_round
-    current_round_copy = copy.deepcopy(
-        current_game.rounds[current_game.current_round_index]
-    )
-    current_game.current_score += score_round
+    # TODO: Implement guess submission — see SRS Section 4.2 (API-003)
+    #
+    # This endpoint should:
+    # 1. Validate that a game exists (return 404 if not)
+    # 2. Set the current round's guess_location from the request
+    # 3. Calculate the score using the scoring package (score_round_function)
+    # 4. Set the current round's score
+    # 5. Add the round score to the game's current_score
+    # 6. Determine if this is the last round (current_round_index == len(rounds) - 1)
+    # 7. If not the last round: advance current_round_index and current_round_id
+    # 8. If the last round: set current_round_id to None
+    # 9. Return a GuessResponse with the completed round data
+    #
+    # Hints:
+    # - Use copy.deepcopy() to capture the round state BEFORE advancing to the next round
+    # - The score_round_function is imported at the top of this file
+    # - Look at how create_game and get_game_state use the global current_game variable
 
-    if current_game.current_round_index == len(current_game.rounds) - 1:
-        current_game.current_round_id = None
-        is_last_round = True
-    else:
-        current_game.current_round_index += 1
-        current_game.current_round_id = current_game.rounds[
-            current_game.current_round_index
-        ].id
-        is_last_round = False
-
-    guess_response = GuessResponse(
-        completed_round=current_round_copy,
-        is_last_round=is_last_round,
-        score_from_last_round=score_round,
-        total_current_score=current_game.current_score,
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Guess submission not yet implemented — see SRS Section 4.2 (API-003)",
     )
-
-    return guess_response
