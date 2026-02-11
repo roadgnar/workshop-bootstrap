@@ -49,9 +49,9 @@ install_cursor_macos() {
     # Detect architecture
     ARCH=$(uname -m)
     if [[ "$ARCH" == "arm64" ]]; then
-        DMG_URL="https://downloader.cursor.sh/arm64/darwin/stable/latest"
+        DMG_URL="https://api2.cursor.sh/updates/download/golden/darwin-arm64/cursor/latest"
     else
-        DMG_URL="https://downloader.cursor.sh/darwin/stable/latest"
+        DMG_URL="https://api2.cursor.sh/updates/download/golden/darwin-x64/cursor/latest"
     fi
 
     TEMP_DMG="/tmp/Cursor.dmg"

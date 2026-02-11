@@ -16,7 +16,7 @@ function Write-Info {
 
 function Write-Success {
     param([string]$Message)
-    Write-Host "    √ " -ForegroundColor Green -NoNewline
+    Write-Host "    v " -ForegroundColor Green -NoNewline
     Write-Host $Message
 }
 
@@ -33,15 +33,15 @@ function Write-ErrorMsg {
 }
 
 function Write-Separator {
-    Write-Host ("─" * 56) -ForegroundColor Blue
+    Write-Host ("-" * 56) -ForegroundColor Blue
 }
 
 function Write-Banner {
     Write-Host ""
-    Write-Host "╔═══════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "║           Workshop Bootstrap Environment              ║" -ForegroundColor Cyan
-    Write-Host "║       Docker + Cursor + Demo Web Application          ║" -ForegroundColor Cyan
-    Write-Host "╚═══════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+    Write-Host ("=" * 56) -ForegroundColor Cyan
+    Write-Host "       Workshop Bootstrap Environment" -ForegroundColor Cyan
+    Write-Host "   Docker + Cursor + Demo Web Application" -ForegroundColor Cyan
+    Write-Host ("=" * 56) -ForegroundColor Cyan
     Write-Host ""
 }
 
