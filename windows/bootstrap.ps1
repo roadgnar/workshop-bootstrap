@@ -47,6 +47,7 @@ $ProgressPreference = "SilentlyContinue"
 
 # Script directory (go up one level to repo root)
 $ScriptDir = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$OriginalDir = Get-Location
 Set-Location $ScriptDir
 
 # Source utilities
@@ -87,7 +88,7 @@ function Select-RepoInteractive {
         $desc = "No description"
         
         try {
-            $json = Get-Content $repoJson -Raw | ConvertFrom-Json
+            $json = Get-Content $repoJson -Raw -Encoding UTF8 | ConvertFrom-Json
             $desc = $json.description
         } catch {}
         
@@ -167,6 +168,9 @@ function Main {
     }
     
     Print-Summary
+    
+    # Restore original working directory
+    Set-Location $OriginalDir
 }
 
 function Setup-Docker {
@@ -255,12 +259,14 @@ function Check-RequiredPorts {
     
     # Stop any existing containers first to free Docker-bound ports
     if (Test-DockerRunning) {
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
         $containers = docker ps -q 2>$null
         if ($containers) {
             Write-Info "Stopping existing containers to free ports..."
-            docker compose down 2>$null | Out-Null
-            docker stop $containers 2>$null | Out-Null
+            docker compose down 2>&1 | Out-Null
+            docker stop $containers 2>&1 | Out-Null
         }
+        $ErrorActionPreference = $savedEAP
     }
     
     # Default ports
@@ -273,7 +279,7 @@ function Check-RequiredPorts {
         
         if (Test-Path $repoJson) {
             try {
-                $json = Get-Content $repoJson -Raw | ConvertFrom-Json
+                $json = Get-Content $repoJson -Raw -Encoding UTF8 | ConvertFrom-Json
                 if ($json.ports) {
                     $ports = $json.ports
                 }
@@ -334,7 +340,9 @@ function Start-RepoServices {
     
     # Install dependencies
     Write-Info "Installing dependencies..."
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
     docker compose exec dev bash -c "/workspace/scripts/start-repo.sh install $Repo" 2>$null
+    $ErrorActionPreference = $savedEAP
     
     # Start services
     Write-Info "Starting services..."
@@ -342,7 +350,7 @@ function Start-RepoServices {
     
     # Wait for health check
     try {
-        $json = Get-Content $repoJson -Raw | ConvertFrom-Json
+        $json = Get-Content $repoJson -Raw -Encoding UTF8 | ConvertFrom-Json
         $healthcheck = $json.healthcheck
     } catch {
         $healthcheck = $null
@@ -415,7 +423,7 @@ function Print-Summary {
     Write-Host "    URLs:" -ForegroundColor White
     
     try {
-        $json = Get-Content $repoJson -Raw | ConvertFrom-Json
+        $json = Get-Content $repoJson -Raw -Encoding UTF8 | ConvertFrom-Json
         $json.urls.PSObject.Properties | ForEach-Object {
             Write-Host "      $($_.Name): " -NoNewline
             Write-Host $_.Value -ForegroundColor Cyan

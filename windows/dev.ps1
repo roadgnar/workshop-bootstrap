@@ -34,6 +34,7 @@ $ErrorActionPreference = "Stop"
 
 # Script directory (go up one level to repo root)
 $ScriptDir = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$OriginalDir = Get-Location
 Set-Location $ScriptDir
 
 # Source utilities
@@ -83,7 +84,7 @@ function Select-RepoInteractive {
         $desc = "No description"
         
         try {
-            $json = Get-Content $repoJson -Raw | ConvertFrom-Json
+            $json = Get-Content $repoJson -Raw -Encoding UTF8 | ConvertFrom-Json
             $desc = $json.description
         } catch {}
         
@@ -276,7 +277,7 @@ function Invoke-List {
             $desc = "No description"
             
             try {
-                $json = Get-Content $repoJson -Raw | ConvertFrom-Json
+                $json = Get-Content $repoJson -Raw -Encoding UTF8 | ConvertFrom-Json
                 $desc = $json.description
             } catch {}
             
@@ -315,27 +316,32 @@ function Invoke-Clean {
     Write-Success "Cleanup complete"
 }
 
-switch ($Command) {
-    "up" { Invoke-Up }
-    "down" { Invoke-Down }
-    "shell" { Invoke-Shell }
-    "start" { Invoke-Start }
-    "stop" { Invoke-Stop }
-    "restart" { Invoke-Restart }
-    "logs" { Invoke-Logs }
-    "status" { Invoke-Status }
-    "install" { Invoke-Install }
-    "select" { Invoke-Select }
-    "list" { Invoke-List }
-    "build" { Invoke-Build }
-    "clean" { Invoke-Clean }
-    "help" { Show-Usage }
-    default {
-        if ([string]::IsNullOrEmpty($Command)) {
-            Write-ErrorMsg "No command specified"
-            Write-Host ""
-            Show-Usage
-            exit 1
+try {
+    switch ($Command) {
+        "up" { Invoke-Up }
+        "down" { Invoke-Down }
+        "shell" { Invoke-Shell }
+        "start" { Invoke-Start }
+        "stop" { Invoke-Stop }
+        "restart" { Invoke-Restart }
+        "logs" { Invoke-Logs }
+        "status" { Invoke-Status }
+        "install" { Invoke-Install }
+        "select" { Invoke-Select }
+        "list" { Invoke-List }
+        "build" { Invoke-Build }
+        "clean" { Invoke-Clean }
+        "help" { Show-Usage }
+        default {
+            if ([string]::IsNullOrEmpty($Command)) {
+                Write-ErrorMsg "No command specified"
+                Write-Host ""
+                Show-Usage
+                exit 1
+            }
         }
     }
+} finally {
+    # Restore original working directory
+    Set-Location $OriginalDir
 }
