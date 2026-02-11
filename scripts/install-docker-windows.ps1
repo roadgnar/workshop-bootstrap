@@ -67,36 +67,50 @@ function Start-DockerWindows {
         return $false
     }
     
-    # Start Docker Desktop
+    # Start Docker Desktop (if it's already running, this is harmless)
     Start-Process -FilePath $dockerDesktop
     
     # Wait for daemon to be ready
+    # NOTE: We must set $ErrorActionPreference to "Continue" here because the
+    # caller sets "Stop". With "Stop", `docker info 2>&1` can throw a terminating
+    # error (stderr → ErrorRecord), preventing $LASTEXITCODE from being checked.
     Write-Info "Waiting for Docker daemon (timeout: ${TimeoutSec}s)..."
+    $savedEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     $elapsed = 0
+    
     while ($elapsed -lt $TimeoutSec) {
-        try {
-            $null = docker info 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host ""
-                Write-Success "Docker daemon is ready"
-                return $true
-            }
+        $null = docker info 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host ""
+            $ErrorActionPreference = $savedEAP
+            Write-Success "Docker daemon is ready"
+            return $true
         }
-        catch {}
         
-        Start-Sleep -Seconds 2
-        $elapsed += 2
+        Start-Sleep -Seconds 3
+        $elapsed += 3
         Write-Host "." -NoNewline
+        
+        # Show elapsed time every 15 seconds so the user knows it's working
+        if ($elapsed % 15 -eq 0) {
+            Write-Host " (${elapsed}s)" -NoNewline
+        }
     }
     
+    $ErrorActionPreference = $savedEAP
     Write-Host ""
     Write-ErrorMsg "Docker daemon did not start within $TimeoutSec seconds"
     Write-Info ""
     Write-Info "Docker Desktop may require first-run setup:"
-    Write-Info "  1. Open Docker Desktop from Start Menu"
+    Write-Info "  1. Open Docker Desktop from the Start Menu"
     Write-Info "  2. Accept the license agreement"
     Write-Info "  3. Complete WSL2 setup if prompted"
-    Write-Info "  4. Re-run this bootstrap script"
+    Write-Info "  4. Wait for Docker Desktop to show 'Engine running'"
+    Write-Info "  5. Re-run this bootstrap script"
+    Write-Info ""
+    Write-Info "If Docker Desktop is already open, check its status icon"
+    Write-Info "in the system tray -- it should show a green 'running' state."
     return $false
 }
 
