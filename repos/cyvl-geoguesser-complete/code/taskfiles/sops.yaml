@@ -1,0 +1,225 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: "3"
+
+tasks:
+  decrypt:all:
+    desc: |
+      Decrypt all secrets files in the repo for a given environment. By default,
+      this command will use aws-vault to switch AWS credentials to the correct
+      environment.
+
+      Secrets files must be named `<name>.secret.enc.<environment>.yaml` and must
+      be in the `deploy` directory.
+
+      Variables:
+        - env (dev or prod): The environment to decrypt.
+        - use_aws_vault (default true): Whether to use aws-vault to switch AWS credentials.
+    silent: true
+    requires:
+      vars:
+        - env
+    vars:
+      encrypted_files:
+        sh: |
+          git ls-files -o --exclude-standard | (grep secret.enc.{{.env}} || true)
+          git ls-files | (grep secret.enc.{{.env}} || true)
+    cmds:
+      - for:
+          var: encrypted_files
+        task: decrypt
+        vars:
+          file: "{{ .ITEM }}"
+
+  decrypt:
+    desc: |
+      Decrypt a single secrets file. By default, this command will use aws-vault
+      to switch AWS credentials to the correct environment.
+
+      Variables:
+        - file (required): The path to the secrets file to decrypt, relative to the deploy directory.
+        - use_aws_vault (default true): Whether to use aws-vault to switch AWS credentials.
+    silent: true
+    requires:
+      vars:
+        - file
+    vars:
+      # Trim the deploy/ prefix from the file path so users can specify relative to deploy or root.
+      file: '{{ trimPrefix "deploy/" .file | trimPrefix "./deploy/" }}'
+      _validate_file:
+        sh: |
+          if [ ! -f "{{ .file }}" ]; then
+            echo "File $file does not exist" >&2
+            exit 1
+          fi
+    cmds:
+      - task: run-sops
+        vars:
+          enc_path: "{{ .file }}"
+          cmd: |
+            echo "Decrypting $ENC_PATH to $DEC_PATH"
+            sops decrypt --output $DEC_PATH $ENC_PATH
+            echo "Successfully decrypted $ENC_PATH to $DEC_PATH!"
+
+  new:
+    desc: |
+      Create a new empty secrets file. Use `edit` to add secrets. By default,
+      this command will use aws-vault to switch AWS credentials to the correct
+      environment.
+
+      Secrets files must be named `<name>.secret.enc.<environment>.yaml` and must
+      be in the `deploy` directory.
+
+      Variables:
+        - file: The path to the secrets file to create.
+        - use_aws_vault (default true): Whether to use aws-vault to switch AWS credentials.
+    silent: true
+    requires:
+      vars:
+        - file
+    vars:
+      # Trim the deploy/ prefix from the file path so users can specify relative to deploy or root.
+      file: '{{ trimPrefix "deploy/" .file | trimPrefix "./deploy/" }}'
+      _validate_file:
+        sh: |
+          if [ -f "{{ .file }}" ]; then
+            echo "File $file already exists" >&2
+            exit 1
+          fi
+      content: |
+        description: |
+          TODO: Add description here.
+    cmds:
+      - task: run-sops
+        vars:
+          enc_path: "{{ .file }}"
+          cmd: |
+            echo "Creating new secrets file $ENC_PATH"
+            pwd
+            echo "{{.content}}" > $DEC_PATH
+            sops encrypt --output $ENC_PATH $DEC_PATH
+            echo "New secrets file created at $ENC_PATH. Edit it with: task env:sops:edit file={{ .file }}"
+
+  edit:
+    desc: |
+      Edit a secrets file. By default, this command will use aws-vault to switch
+      AWS credentials to the correct environment.
+
+      This task will also update the decrypted version of the secrets file.
+
+      Variables:
+        - file: The path to the secrets file to edit, relative to the deploy directory.
+        - editor (default $EDITOR): The editor to use to edit the secrets file, code or cursor.
+        - use_aws_vault (default true): Whether to use aws-vault to switch AWS credentials.
+    silent: true
+    requires:
+      vars:
+        - file
+    vars:
+      # Trim the deploy/ prefix from the file path so users can specify relative to deploy or root.
+      file: '{{ trimPrefix "deploy/" .file | trimPrefix "./deploy/" }}'
+      editor: |-
+        {{- if (eq .editor "cursor") -}}
+          cursor -w
+        {{- else if (eq .editor "code") -}}
+          code -w
+        {{- else if (empty .editor) -}}
+          {{ .editor | default (env "EDITOR") }}
+        {{- else -}}
+          {{ fail (cat "Invalid editor:" .editor) }}
+        {{- end -}}
+    cmds:
+      - task: run-sops
+        vars:
+          enc_path: "{{ .file }}"
+          cmd: |
+            echo "Editing $ENC_PATH"
+            export EDITOR="{{ .editor }}"
+            sops edit $ENC_PATH
+            echo "Successfully edited $ENC_PATH!"
+            sops decrypt --output $DEC_PATH $ENC_PATH
+            echo "Successfully decrypted $ENC_PATH to $DEC_PATH!"
+
+  run-sops:
+    desc: |
+      Run sops with the given arguments. By default, this command will use
+      aws-vault to switch AWS credentials to the correct environment.
+
+      The command can reference $ENC_PATH and $DEC_PATH to access the encrypted
+      and decrypted paths. At least one of enc_path or dec_path must be
+      provided. The other path will be inferred from the other path.
+
+      Variables:
+        - enc_path: The path to the encrypted secrets file. If not provided, it
+          will be inferred from the dec_path.
+        - dec_path: The path to the decrypted secrets file. If not provided, it
+          will be inferred from the enc_path.
+        - use_aws_vault (default true): Whether to use aws-vault to switch AWS credentials.
+        - cmd: The command to run
+    internal: true
+    interactive: true
+    silent: true
+    requires:
+      vars:
+        - cmd
+    vars:
+      _validate_either_path:
+        sh: |
+          if [ -z "{{ .enc_path }}" ] && [ -z "{{ .dec_path }}" ]; then
+            echo "Either enc_path or dec_path must be provided" >&2
+            exit 1
+          fi
+      enc_path: |
+        {{- if .enc_path -}}
+          {{ .enc_path }}
+        {{- else -}}
+          {{ .dec_path | replace "secret.dec" "secret.enc" }}
+        {{- end -}}
+      dec_path: |
+        {{- if .dec_path -}}
+          {{ .dec_path }}
+        {{- else -}}
+          {{ .enc_path | replace "secret.enc" "secret.dec" }}
+        {{- end -}}
+      _validate_enc_path:
+        sh: |
+          if [ "{{ isAbs .enc_path }}" = "true" ]; then
+            echo "File {{ .enc_path }} must be relative, not absolute" >&2
+            exit 1
+          fi
+          if [[ ! "{{ .enc_path }}" =~ ^.*\.?secret\.enc\.[a-z]+\.[a-z]+$ ]]; then
+            echo "File {{ .enc_path }} is not a secrets file, should be named like <name>.secret.enc.<environment>.yaml" >&2
+            exit 1
+          fi
+      _validate_dec_path:
+        sh: |
+          if [ "{{ isAbs .dec_path }}" = "true" ]; then
+            echo "File {{ .dec_path }} must be relative, not absolute" >&2
+            exit 1
+          fi
+          if [[ ! "{{ .dec_path }}" =~ ^.*\.?secret\.dec\.[a-z]+\.[a-z]+$ ]]; then
+            echo "File {{ .dec_path }} is not a decrypted secrets file, should be named like <name>.secret.dec.<environment>.yaml" >&2
+            exit 1
+          fi
+      enc_env_name: '{{ splitList "." (base .enc_path) | initial | last }}'
+      dec_env_name: '{{ splitList "." (base .dec_path) | initial | last }}'
+      env_name: "{{ .enc_env_name }}"
+      _validate_env_names:
+        sh: |
+          if [ "{{ .enc_env_name }}" != "{{ .dec_env_name }}" ]; then
+            echo "File {{ .enc_path }} and {{ .dec_path }} should use the same environment name" >&2
+            exit 1
+          fi
+      abs_enc_path: "{{ joinPath .TASK_DIR .enc_path }}"
+      abs_dec_path: "{{ joinPath .TASK_DIR .dec_path }}"
+
+      use_aws_vault: '{{ .use_aws_vault | default "true" }}'
+      vault_wrapper: |
+        {{- if (eq .use_aws_vault "true") -}}
+          aws-vault exec developer-{{.env_name}} --
+        {{- end -}}
+    env:
+      ENC_PATH: "{{ .abs_enc_path }}"
+      DEC_PATH: "{{ .abs_dec_path }}"
+    cmd: |
+      {{ .vault_wrapper }} bash -e -c '{{ .cmd }}'

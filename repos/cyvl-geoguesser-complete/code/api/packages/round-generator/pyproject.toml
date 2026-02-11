@@ -1,0 +1,32 @@
+[project]
+authors = [
+    { name = "PJ Mara", email = "pj@cyvl.ai" },
+]
+description = "Utility functions for round generation"
+name = "round-generator"
+readme = "README.md"
+requires-python = ">=3.12"
+version = "0.1.0"
+
+dependencies = [
+    "cloudpathlib[s3]>=0.23.0",
+    "pydantic>=2.10.6",
+    "pydantic-settings>=2.9.1",
+    "pytest>=8.4.2",
+    "state-management>=0.1.0",
+    "models>=0.1.0",
+    "geopandas>=1.1.1",
+]
+
+[tool.uv.sources]
+state-management = { workspace = true }
+models = { workspace = true }
+
+
+[[tool.uv.index]]
+url = "https://cyvl-code-387846518836.d.codeartifact.us-east-1.amazonaws.com/pypi/unified/simple/"
+default = true
+
+[build-system]
+build-backend = "uv_build"
+requires      = ["uv_build>=0.8.3,<0.9.0"]
