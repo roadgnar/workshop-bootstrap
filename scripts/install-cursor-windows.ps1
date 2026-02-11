@@ -48,7 +48,7 @@ function Install-CursorWindows {
     # Fallback: Direct download
     Write-Warn "WinGet not available or failed. Attempting direct download..."
     
-    $installerUrl = "https://downloader.cursor.sh/windows/stable/latest"
+    $installerUrl = "https://api2.cursor.sh/updates/download/golden/win32-x64-user/cursor/latest"
     $installerPath = "$env:TEMP\CursorSetup.exe"
     
     Write-Info "Downloading Cursor installer..."
