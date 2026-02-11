@@ -174,7 +174,9 @@ function Setup-Docker {
     
     if ((Test-DockerInstalled) -and (-not $ReinstallDocker)) {
         Write-Success "Docker is installed"
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
         $version = docker --version 2>&1
+        $ErrorActionPreference = $savedEAP
         Write-Info $version
     }
     else {
@@ -210,7 +212,10 @@ function Ensure-DockerRunning {
     # Check Docker Compose (must be after daemon is running)
     if (Test-ComposeAvailable) {
         Write-Success "Docker Compose is available"
+        $savedEAP = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
         $composeVersion = docker compose version 2>&1
+        $ErrorActionPreference = $savedEAP
         Write-Info $composeVersion
     }
     else {
@@ -225,11 +230,13 @@ function Setup-Cursor {
     
     if ((Test-CursorInstalled) -and (-not $ReinstallCursor)) {
         Write-Success "Cursor is installed"
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
         try {
             $version = cursor --version 2>&1
             Write-Info $version
         }
         catch {}
+        finally { $ErrorActionPreference = $savedEAP }
     }
     else {
         if ($ReinstallCursor) {

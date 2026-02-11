@@ -57,24 +57,38 @@ function Test-DockerInstalled {
 }
 
 # Check if Docker daemon is running
+# NOTE: We temporarily set $ErrorActionPreference to "Continue" because the
+# caller (bootstrap.ps1) sets it to "Stop". With "Stop", stderr output from
+# native commands combined with 2>&1 redirection can throw a terminating error,
+# preventing $LASTEXITCODE from ever being checked -- even when Docker IS ready.
 function Test-DockerRunning {
+    $savedEAP = $ErrorActionPreference
     try {
+        $ErrorActionPreference = "Continue"
         $null = docker info 2>&1
         return $LASTEXITCODE -eq 0
     }
     catch {
         return $false
     }
+    finally {
+        $ErrorActionPreference = $savedEAP
+    }
 }
 
 # Check if Docker Compose is available
 function Test-ComposeAvailable {
+    $savedEAP = $ErrorActionPreference
     try {
+        $ErrorActionPreference = "Continue"
         $null = docker compose version 2>&1
         return $LASTEXITCODE -eq 0
     }
     catch {
         return $false
+    }
+    finally {
+        $ErrorActionPreference = $savedEAP
     }
 }
 
@@ -212,7 +226,7 @@ function Stop-PortProcess {
     # If Docker is holding the port, stop containers
     if (Test-DockerPort -Port $Port) {
         Write-Info "Port $Port is held by a Docker container, stopping containers..."
-        docker compose down 2>$null
+        docker compose down 2>$null | Out-Null
         Start-Sleep -Seconds 2
         return -not (Test-PortInUse -Port $Port)
     }

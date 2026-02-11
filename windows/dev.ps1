@@ -139,7 +139,9 @@ Examples:
 }
 
 function Test-ContainerRunning {
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
     $running = docker compose ps --status running 2>&1 | Select-String $ContainerName
+    $ErrorActionPreference = $savedEAP
     return $null -ne $running
 }
 
