@@ -58,3 +58,4 @@ build/
 *.egg-info/
 **/node_modules/*
 
+cyvl_public_data/
